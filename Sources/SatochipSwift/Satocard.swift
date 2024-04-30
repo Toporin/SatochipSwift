@@ -6,7 +6,7 @@ public enum CLA: UInt8 {
 }
 
 public enum ISO7816INS: UInt8 {
-    case select = 0xa4
+    case select = 0xA4
 }
 
 public enum SatocardINS: UInt8 {
@@ -40,11 +40,11 @@ public enum SatocardINS: UInt8 {
     case set2FaKey = 0x79
     case reset2FaKey = 0x78
     case signTransactionHash = 0x7A
-    //secureImportFromSeedKeeper
-    case importEncryptedSecret = 0xAc
-    case importTrustedPubkey = 0xAa
-    case exportTrustedPubkey = 0xAb
-    case exportAuthentikey = 0xAd
+    //secureImportFromSeedkeeper
+    case importEncryptedSecret = 0xAC
+    case importTrustedPubkey = 0xAA
+    case exportTrustedPubkey = 0xAB
+    case exportAuthentikey = 0xAD
     //personalizationPkiSupport
     case importPkiCertificate = 0x92
     case exportPkiCertificate = 0x93
@@ -63,6 +63,17 @@ public enum SatocardINS: UInt8 {
     case resetSatodimeKey = 0x59 //ChangeKeyStateFromUnsealedToUninitialized
     case initiateSatodimeTransfer = 0x5A
     // seedkeeper
+    case getSeedkeeperStatus = 0xA7
+    case generateMasterseed = 0xA0
+    case generateRandomSecret = 0xA3
+    case generate2FaSecret = 0xAE
+    case importSecret = 0xA1
+    case exportSecret = 0xA2
+    case exportSecretToSatochip = 0xA8
+    case resetSecret = 0xA5
+    case listSecretHeaders = 0xA6
+    case printLogs = 0xA9
+    case deriveMasterPassword =  0xAF
 }
 
 struct SatocardCst {
@@ -93,4 +104,3 @@ public enum SatocardIdentifier: String {
         return rawValue.hexToBytes
     }
 }
-

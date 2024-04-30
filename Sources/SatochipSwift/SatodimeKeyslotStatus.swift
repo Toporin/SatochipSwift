@@ -6,6 +6,12 @@ public enum SatodimeKeyslotStatusError: Error {
     case unknownError(sw: UInt16)
 }
 
+public enum SlotStatus: Int {
+    case uninitialized = 0x00
+    case sealed = 0x01
+    case unsealed = 0x02
+}
+
 public struct SatodimeKeyslotStatus {
     
     public var setupDone: Bool = false
