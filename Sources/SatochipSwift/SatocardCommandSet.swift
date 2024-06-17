@@ -287,6 +287,43 @@ public class SatocardCommandSet {
         return (rapdu, authentikey, authentikeyHex)
     }
     
+    func cardGetLabel() throws -> String {
+        print("In cardGetLabel")
+        let cla: UInt8 = CLA.proprietary.rawValue
+        let ins: UInt8 = SatocardINS.cardLabel.rawValue
+        let p1: UInt8 = 0x00
+        let p2: UInt8 = 0x01 // get
+        
+        let command = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: [])
+        
+        let response = try self.cardTransmit(plainApdu: command)
+        
+        var label: String
+        
+        if response.sw1 == 0x90 && response.sw2 == 0x00 {
+            let labelSize = response.data[0] //response[0]
+            do {
+                if let labelData = String(data: Data(response.data[1...]), encoding: .utf8) {
+                    label = labelData
+                } else {
+                    throw NSError(domain: "UnicodeDecodeError", code: 0, userInfo: nil)
+                }
+            } catch {
+                NSLog("UnicodeDecodeError while decoding card label !")
+                label = String(bytes: response.data[1...], encoding: .utf8) ?? "\(response.data[1...])"
+            }
+        } else if response.sw1 == 0x6d && response.sw2 == 0x00 {
+            label = "(none)"
+        } else {
+            NSLog("Error while recovering card label: \(response.sw1) \(response.sw2)")
+            label = "(unknown)"
+        }
+        
+        // return (response, sw1, sw2, label)
+        return label
+    }
+
+    
     //****************************************
     //*             PIN MGMT                 *
     //****************************************
