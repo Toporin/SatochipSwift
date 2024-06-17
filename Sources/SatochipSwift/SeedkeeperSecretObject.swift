@@ -31,6 +31,10 @@ public struct SeedkeeperSecretObject {
         self.secretEncryptedParams = secretEncryptedParams
     }
     
+    public func getSecretEncryptedParams() -> SeedkeeperSecretEncryptedParams? {
+        return secretEncryptedParams
+    }
+    
     public func getFingerprintFromSecret() -> [UInt8]{
         if isEncrypted {
             // we can't compute fingerprint from secret since it is encrypted
