@@ -31,6 +31,13 @@ public struct SeedkeeperSecretObject {
         self.secretEncryptedParams = secretEncryptedParams
     }
     
+    public func getSidPubKey() -> Int? {
+        if let secretEncryptedParams = secretEncryptedParams {
+            return secretEncryptedParams.sidPubkey
+        }
+        return nil
+    }
+    
     public func getSecretEncryptedParams() -> SeedkeeperSecretEncryptedParams? {
         return secretEncryptedParams
     }
