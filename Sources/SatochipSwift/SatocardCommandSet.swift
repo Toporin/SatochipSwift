@@ -291,7 +291,7 @@ public class SatocardCommandSet {
     //*             PIN MGMT                 *
     //****************************************
     
-    func cardChangePIN(pin_nbr: Int, old_pin: [UInt8], new_pin: [UInt8]) throws -> APDUResponse {
+    public func cardChangePIN(old_pin: [UInt8], new_pin: [UInt8]) throws -> APDUResponse {
         NSLog("In cardChangePIN")
         let cla: UInt8 = CLA.proprietary.rawValue
         let ins: UInt8 = SatocardINS.changePin.rawValue
