@@ -322,6 +322,31 @@ public class SatocardCommandSet {
         // return (response, sw1, sw2, label)
         return label
     }
+    
+    public func cardSetLabel(label: String) throws -> Bool {
+        NSLog("In cardSetLabel")
+        let cla: UInt8 = CLA.proprietary.rawValue
+        let ins: UInt8 = SatocardINS.cardLabel.rawValue
+        let p1: UInt8 = 0x00
+        let p2: UInt8 = 0x00 // set
+        
+        guard let labelData = label.data(using: .utf8) else {
+            throw NSError(domain: "EncodingError", code: 0, userInfo: nil)
+        }
+        
+        var data: [UInt8] = [UInt8(labelData.count)]
+        data += [UInt8](labelData)
+        
+        let command = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
+        
+        do {
+            let response = try self.cardTransmit(plainApdu: command)
+            return response.sw1 == 0x90 && response.sw2 == 0x00
+        } catch {
+            return false
+        }
+    }
+
 
     
     //****************************************
