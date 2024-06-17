@@ -287,7 +287,7 @@ public class SatocardCommandSet {
         return (rapdu, authentikey, authentikeyHex)
     }
     
-    func cardGetLabel() throws -> String {
+    public func cardGetLabel() throws -> String {
         print("In cardGetLabel")
         let cla: UInt8 = CLA.proprietary.rawValue
         let ins: UInt8 = SatocardINS.cardLabel.rawValue
