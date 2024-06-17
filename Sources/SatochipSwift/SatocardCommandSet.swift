@@ -123,7 +123,7 @@ public class SatocardCommandSet {
         let resp: APDUResponse = try cardChannel.send(selectApplet)
         if resp.sw == StatusWord.ok.rawValue {
             // todo?
-            self.cardType = CardType.satodime
+            self.cardType = CardType.seedkeeper
         }
         return resp
     }
