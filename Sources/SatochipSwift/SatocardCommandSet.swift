@@ -355,14 +355,13 @@ public class SatocardCommandSet {
     
     public func cardChangePIN(oldPin: [UInt8], newPin: [UInt8]) throws -> APDUResponse {
         NSLog("In cardChangePIN")
+        NSLog("Local package")
         let cla: UInt8 = CLA.proprietary.rawValue
         let ins: UInt8 = SatocardINS.changePin.rawValue
-        let p1: UInt8 = UInt8(newPin.count)
+        let p1: UInt8 = 0x00//UInt8(newPin.count)
         let p2: UInt8 = 0x00
-        
+                
         let data: [UInt8] = [UInt8(oldPin.count)] + oldPin + [UInt8(newPin.count)] + newPin
-        
-        self.pin0 = oldPin
         
         let command = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
         let response = try self.cardTransmit(plainApdu: command)
