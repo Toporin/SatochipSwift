@@ -8,9 +8,9 @@
 import Foundation
 
 public struct SeedkeeperSecretEncryptedParams {
-    var sidPubkey: Int = 0
-    var iv: [UInt8] = []
-    var hmac: [UInt8] = []
+    public var sidPubkey: Int = 0
+    public var iv: [UInt8] = []
+    public var hmac: [UInt8] = []
     
     public init(sidPubkey: Int, iv: [UInt8], hmac: [UInt8]) {
         self.sidPubkey = sidPubkey
