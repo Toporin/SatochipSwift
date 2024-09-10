@@ -11,7 +11,12 @@ public struct SeedkeeperSecretEncryptedParams {
     var sidPubkey: Int = 0
     var iv: [UInt8] = []
     var hmac: [UInt8] = []
-    //var fingerprint: [UInt8] = []
+    
+    public init(sidPubkey: Int, iv: [UInt8], hmac: [UInt8]) {
+        self.sidPubkey = sidPubkey
+        self.iv = iv
+        self.hmac = hmac
+    }
 }
 
 public struct SeedkeeperSecretObject {
