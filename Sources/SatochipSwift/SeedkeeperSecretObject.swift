@@ -8,12 +8,13 @@
 import Foundation
 
 public struct SeedkeeperSecretEncryptedParams {
-    public var sidPubkey: Int = 0
+    //public var sidPubkey: Int = 0 // not really useful
     public var iv: [UInt8] = []
     public var hmac: [UInt8] = []
+    // TODO: add authentikeys of exporter and importer?
     
-    public init(sidPubkey: Int, iv: [UInt8], hmac: [UInt8]) {
-        self.sidPubkey = sidPubkey
+    public init(iv: [UInt8], hmac: [UInt8]) {
+        //self.sidPubkey = sidPubkey
         self.iv = iv
         self.hmac = hmac
     }
@@ -36,12 +37,12 @@ public struct SeedkeeperSecretObject {
         self.secretEncryptedParams = secretEncryptedParams
     }
     
-    public func getSidPubKey() -> Int? {
-        if let secretEncryptedParams = secretEncryptedParams {
-            return secretEncryptedParams.sidPubkey
-        }
-        return nil
-    }
+//    public func getSidPubKey() -> Int? {
+//        if let secretEncryptedParams = secretEncryptedParams {
+//            return secretEncryptedParams.sidPubkey
+//        }
+//        return nil
+//    }
     
     public func getSecretEncryptedParams() -> SeedkeeperSecretEncryptedParams? {
         return secretEncryptedParams
@@ -59,21 +60,21 @@ public struct SeedkeeperSecretObject {
     }
     
     // todo: this method only makes sense for entropy secret
-    public func getSha512FromSecret() -> [UInt8]{
-        if isEncrypted {
-            return [UInt8]()
-        }
-        let secretHash = Crypto.shared.sha512(Array(secretBytes[1..<secretBytes.count]))
-        return secretHash
-    }
+//    public func getSha512FromSecret() -> [UInt8]{
+//        if isEncrypted {
+//            return [UInt8]()
+//        }
+//        let secretHash = Crypto.shared.sha512(Array(secretBytes[1..<secretBytes.count]))
+//        return secretHash
+//    }
     
     // todo: this method only makes sense for Master Password secret
-    public func getHmacSha512(salt: [UInt8]) -> [UInt8] {
-        if isEncrypted {
-            return [UInt8]()
-        }
-        let hmac = Crypto.shared.hmacSHA512(data: Array(secretBytes[1..<secretBytes.count]), key: salt)
-        return hmac
-    }
+//    public func getHmacSha512(salt: [UInt8]) -> [UInt8] {
+//        if isEncrypted {
+//            return [UInt8]()
+//        }
+//        let hmac = Crypto.shared.hmacSHA512(data: Array(secretBytes[1..<secretBytes.count]), key: salt)
+//        return hmac
+//    }
     
 }

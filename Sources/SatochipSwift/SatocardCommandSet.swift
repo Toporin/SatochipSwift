@@ -1252,16 +1252,17 @@ public class SatocardCommandSet {
      For plain import, secret will be encrypted in memory, so a padding of (AES_BLOCKSIZE - plain_secret_size%AES_BLOCKSIZE) must be added.
      
      - parameter secretObject: SeedkeeperSecretObject with the secret & metadata
+     - parameter sidPubkey: for secure import, the id of the pubkey used for export
         
      - returns: responseAPDU
      - returns: id
      - returns: fingerprint (4bytes)
      */
-    public func seedkeeperImportSecret(secretObject: SeedkeeperSecretObject) throws -> (APDUResponse, Int, [UInt8])  {
+    public func seedkeeperImportSecret(secretObject: SeedkeeperSecretObject, sidPubkey: Int? = nil) throws -> (APDUResponse, Int, [UInt8])  {
         print("SATOCHIPLIB: seedkeeperImportSecret")
         
         let secretHeader = secretObject.secretHeader
-        let sidPubkey: Int? = secretObject.secretEncryptedParams?.sidPubkey //(secretObject.SecretEncryptedParams == nil) ? nil : secretObject.SecretEncryptedParams?.sidPubkey
+        //let sidPubkey: Int? = secretObject.secretEncryptedParams?.sidPubkey //(secretObject.SecretEncryptedParams == nil) ? nil : secretObject.SecretEncryptedParams?.sidPubkey
         let isSecureExport = (sidPubkey == nil) ? false : true
         let secretBytes: [UInt8] = secretObject.secretBytes
         var secretPaddedSize = 0
@@ -1432,7 +1433,7 @@ public class SatocardCommandSet {
         // todo: check sig
         
         // create secretObject
-        let secretEncryptedParams = isSecureExport ? SeedkeeperSecretEncryptedParams(sidPubkey: sidPubkey!, iv: iv, hmac: sigBytes) : nil
+        let secretEncryptedParams = isSecureExport ? SeedkeeperSecretEncryptedParams(iv: iv, hmac: sigBytes) : nil
         let secretObject = SeedkeeperSecretObject(secretBytes: secretBytes,
                                                   secretHeader: secretHeader,
                                                   isEncrypted: isSecureExport,
@@ -1500,7 +1501,7 @@ public class SatocardCommandSet {
         let hmacBytes = Array(response[offset..<(offset+hmacSize)])
         
         // secretObject
-        let secretParams = SeedkeeperSecretEncryptedParams(sidPubkey: sidPubkey, iv: iv, hmac: hmacBytes)
+        let secretParams = SeedkeeperSecretEncryptedParams(iv: iv, hmac: hmacBytes)
         let secretObject = SeedkeeperSecretObject(secretBytes: secretBytes,
                                                   secretHeader: secretHeader,
                                                   isEncrypted: true,
