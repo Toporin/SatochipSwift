@@ -35,6 +35,7 @@ public enum SeedkeeperSecretType: UInt8 {
     case certificate = 0xA0
     case secret2FA = 0xB0
     case data = 0xC0
+    case walletDescriptor = 0xC1
 }
 
 public enum SeedkeeperSecretSubtype: UInt8 {
@@ -51,7 +52,7 @@ public enum SeedkeeperKeySubtype: UInt8 {
     case entropy = 0x10
 }
 
-public struct SeedkeeperSecretHeader {
+public struct SeedkeeperSecretHeader : Hashable {
     
     public static let HEADER_SIZE = 13
     
@@ -100,10 +101,10 @@ public struct SeedkeeperSecretHeader {
         
         var offset = 0
         sid = 256*Int(response[0]) + Int(response[1])
-        type = SeedkeeperSecretType(rawValue: response[2])!
+        type = SeedkeeperSecretType(rawValue: response[2]) ?? SeedkeeperSecretType.defaultType //use default if unknown
         subtype = response[12]
-        origin = SeedkeeperSecretOrigin(rawValue: response[3])!
-        exportRights = SeedkeeperExportRights(rawValue: response[4])!
+        origin = SeedkeeperSecretOrigin(rawValue: response[3]) ?? SeedkeeperSecretOrigin.plainImport //use default if unknown
+        exportRights = SeedkeeperExportRights(rawValue: response[4]) ?? SeedkeeperExportRights.exportPlaintextAllowed //use default if unknown
         nbExportPlaintext = response[5]
         nbExportEncrypted = response[6]
         useCounter =  response[7]
