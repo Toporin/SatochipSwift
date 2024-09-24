@@ -99,8 +99,18 @@ public class SatocardCommandSet {
     
     static let plainInstructionSet: Set = [ISO7816INS.select.rawValue,
                                            SatocardINS.getStatus.rawValue,
+                                           SatocardINS.resetSecret.rawValue,
                                            SatocardINS.initSecureChannel.rawValue,
                                            SatocardINS.processSecureChannel.rawValue]
+    
+    static let sensitiveInstructionSet: Set = [SatocardINS.bip32ImportSeed.rawValue,
+                                               SatocardINS.changePin.rawValue,
+                                               SatocardINS.verifyPin.rawValue,
+                                               SatocardINS.unblockPin.rawValue,
+                                               SatocardINS.getSatodimePrivkey.rawValue,
+                                               SatocardINS.importSecret.rawValue,
+                                               SatocardINS.exportSecret.rawValue,
+                                               SatocardINS.set2FaKey.rawValue]
     
     public init(cardChannel: CardChannel) {
         self.cardChannel = cardChannel
@@ -168,10 +178,16 @@ public class SatocardCommandSet {
         
         repeat{
             let apduBytes: [UInt8] = plainApdu.serialize()
-            print("SATOCHIPLIB: card transmit data: \(apduBytes.bytesToHex)");
-            //logger.info("SATOCHIPLIB: card transmit data: \(apduBytes.bytesToHex)");
             
             let ins: UInt8 = apduBytes[1]
+            // for debug purpose
+            if !SatocardCommandSet.sensitiveInstructionSet.contains(ins){
+                print("SATOCHIPLIB: card transmit data: \(apduBytes.bytesToHex)");
+                //logger.info("SATOCHIPLIB: card transmit data: \(apduBytes.bytesToHex)");
+            } else {
+                print("SATOCHIPLIB: card transmit data: \(apduBytes[0..<5].bytesToHex)\(String(repeating: "*", count: (apduBytes.count-5)))");
+            }
+            
             var isEncrypted: Bool = false
             let capdu: APDUCommand
             
@@ -222,7 +238,17 @@ public class SatocardCommandSet {
         } while(!isApduTransmitted)
     }
     
-    // generic
+    public func cardDisconnect(){
+        secureChannel.reset()
+        cardStatus = nil
+        pin0 = nil
+        cardType = CardType.nocard
+    }
+    
+    //****************************************
+    //*         MARK: COMMON COMMANDS        *
+    //****************************************
+    
     public func cardGetStatus(sendEncrypted: Bool = true) throws -> APDUResponse {
         //logger.info("in cardGetStatus - info");
         
@@ -243,13 +269,6 @@ public class SatocardCommandSet {
         
         return rapdu
     }
-    
-    public func cardDisconnect(){
-            secureChannel.reset()
-            cardStatus = nil
-            pin0 = nil
-        cardType = CardType.nocard
-        }
     
     public func cardInitiateSecureChannel() throws -> APDUResponse {
         
@@ -346,11 +365,21 @@ public class SatocardCommandSet {
             return false
         }
     }
-
-
+    
+    // WARNING: this command can erase all data on card!
+    public func cardSendResetCommand() throws -> APDUResponse {
+        print("in cardSendResetCommand START")
+        let capdu: APDUCommand = APDUCommand(cla: CLA.proprietary.rawValue, ins: SatocardINS.resetToFactory.rawValue, p1: 0x00, p2: 0x00, data: [])
+        
+        //let rapdu = try self.cardTransmit(plainApdu: capdu)
+        let rapdu = try self.cardChannel.send(capdu)
+        print("in cardSendResetCommand END")
+        
+        return rapdu
+    }
     
     //****************************************
-    //*             PIN MGMT                 *
+    //*          MARK: PIN MGMT              *
     //****************************************
     
     public func cardChangePIN(oldPin: [UInt8], newPin: [UInt8]) throws -> APDUResponse {
@@ -389,21 +418,37 @@ public class SatocardCommandSet {
             try rapdu.checkAuthOK()
             // update cached pin0 if success
             self.pin0 = mypin
-        } catch CardError.wrongPIN(let retryCounter){
+        } catch CardError.wrongPIN(let retryCounter) {
             self.pin0 = nil
             //logger.info("SATOCHIPLIB: cardVerifyPIN: wrong pin: retryCounter \(retryCounter)")
             throw CardError.wrongPIN(retryCounter: retryCounter)
-        } catch CardError.wrongPINLegacy{
+        } catch CardError.wrongPINLegacy {
             self.pin0 = nil
             //logger.info("SATOCHIPLIB: cardVerifyPIN: wrong pin (legacy: retryCounter unspecified)")
             throw CardError.wrongPINLegacy
+        } catch CardError.pinBlocked {
+            print("SATOCHIPLIB: cardVerifyPIN: pin blocked!")
+            self.pin0 = nil
+            throw CardError.pinBlocked
         }
         
         return rapdu
     }
     
+    public func cardUnblockPIN(puk: [UInt8]) throws -> APDUResponse {
+        
+        let capdu: APDUCommand = APDUCommand(cla: CLA.proprietary.rawValue, ins: SatocardINS.unblockPin.rawValue, p1: 0x00, p2: 0x00, data: puk)
+        //logger.info("SATOCHIPLIB: CAPDU cardUnblockPIN: \(capdu.toHexString())")
+        let rapdu: APDUResponse = try self.cardTransmit(plainApdu: capdu)
+        //logger.info("SATOCHIPLIB: RAPDU cardUnblockPIN: \(rapdu.toHexString())")
+        
+        try rapdu.checkAuthOK()
+        
+        return rapdu
+    }
+    
     //****************************************
-    //*                PKI                   *
+    //*           MARK: PKI                  *
     //****************************************
     
     public func cardExportPkiPubkey() throws -> (APDUResponse, [UInt8]) {
@@ -423,7 +468,7 @@ public class SatocardCommandSet {
     }
     
     //****************************************
-    //*               CARD MGMT              *
+    //*           MARK: CARD SETUP           *
     //****************************************
     
     public func cardSetup(pin_tries0: UInt8, pin0: [UInt8]) throws -> APDUResponse {

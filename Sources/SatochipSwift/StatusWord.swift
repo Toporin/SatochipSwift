@@ -60,7 +60,7 @@ public enum StatusWord: UInt16, Error {
     case lockError = 0x9C30
     case exportNotAllowed = 0x9C31
     case usageNotAllowed = 0x9C36
-    case wrongSecretType = 0x9C38 //TODO replace 9C35 with 9C38!
+    case wrongSecretType = 0x9C38
     
 }
 
