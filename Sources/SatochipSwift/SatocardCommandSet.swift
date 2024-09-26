@@ -99,7 +99,6 @@ public class SatocardCommandSet {
     
     static let plainInstructionSet: Set = [ISO7816INS.select.rawValue,
                                            SatocardINS.getStatus.rawValue,
-                                           SatocardINS.resetSecret.rawValue,
                                            SatocardINS.initSecureChannel.rawValue,
                                            SatocardINS.processSecureChannel.rawValue]
     
