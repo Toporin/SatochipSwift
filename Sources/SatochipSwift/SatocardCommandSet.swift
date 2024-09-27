@@ -129,12 +129,18 @@ public class SatocardCommandSet {
                                       p1: 0x04,
                                       p2: 0x00,
                                       data: SatocardIdentifier.satodimeAID.bytesValue)
-        let resp: APDUResponse = try cardChannel.send(selectApplet)
-        if resp.sw == StatusWord.ok.rawValue {
+        let rapdu: APDUResponse = try cardChannel.send(selectApplet)
+        if rapdu.sw == StatusWord.ok.rawValue {
+            
+            if rapdu.data.count>=7 {
+                // in new card version, the card status is already provided as response to select
+                cardStatus = try CardStatus(rapdu: rapdu)
+            }
+            
             // todo?
-            self.cardType = CardType.seedkeeper
+            self.cardType = CardType.satodime
         }
-        return resp
+        return rapdu
     }
     
     public func selectApplet(cardType: CardType = CardType.anycard) throws -> (APDUResponse, CardType) {
@@ -147,6 +153,10 @@ public class SatocardCommandSet {
             for card in [CardType.satodime, CardType.seedkeeper, CardType.satochip] {
                 do {
                     var (rapdu, foundCardType) = try selectApplet(cardType: card)
+                    if rapdu.sw == 0x9000 && rapdu.data.count>=7 {
+                        // in new card version, the card status is already provided as response to select
+                        cardStatus = try CardStatus(rapdu: rapdu)
+                    }
                     return (rapdu, foundCardType)
                 } catch let error {
                     print(error.localizedDescription)
@@ -161,7 +171,10 @@ public class SatocardCommandSet {
                                        data: cardType.aidBytesValue)
         let rapdu: APDUResponse = try cardChannel.send(selectApplet)
         if rapdu.sw == StatusWord.ok.rawValue {
-            // todo?
+            if rapdu.data.count>=7 {
+                // in new card version, the card status is already provided as response to select
+                cardStatus = try CardStatus(rapdu: rapdu)
+            }
             self.cardType = cardType
         } else {
             throw SatocardError.wrongCardType

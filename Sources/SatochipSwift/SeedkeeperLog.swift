@@ -11,7 +11,7 @@ enum SeedkeeperLogError: Error {
     case wrongLogSize(String)
 }
 
-public struct SeedkeeperLog {
+public struct SeedkeeperLog: Hashable {
     
     public static let logSize = 7 // bytes
     
@@ -32,4 +32,8 @@ public struct SeedkeeperLog {
         sw = UInt16(response[5])*256 + UInt16(response[6]) //StatusWord(rawValue: UInt16(response[5])*256 + UInt16(response[6]))
     }
     
+    public func toString() -> String {
+        var txt = "ins: \(ins); sid1: \(sid1); sid2: \(sid2); sw12: \(String(format:"%04X", sw));"
+        return txt
+    }
 }

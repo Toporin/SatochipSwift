@@ -16,9 +16,9 @@ public struct CardStatus {
     public var protocolVersion: UInt16 = 0
     
 
-    public init(rapdu: APDUResponse) throws {
+    public init?(rapdu: APDUResponse) {
         
-        if rapdu.sw==0x9000 {
+        if (rapdu.sw == 0x9000) && (rapdu.data.count >= 4) {
             
             let data = rapdu.data
             protocolMajorVersion = data[0]
@@ -56,6 +56,8 @@ public struct CardStatus {
             isSeeded = false
             needsSecureChannel = false
         } else {
+            // NOTE: this is a breaking change compared to v0.1.0
+            return nil
             //throws IllegalArgumentException("Wrong getStatus data!"); // should not happen
         }
     }
