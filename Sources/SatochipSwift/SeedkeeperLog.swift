@@ -19,6 +19,7 @@ public struct SeedkeeperLog: Hashable {
     public var sid1: Int = 0
     public var sid2: Int = 0
     public var sw: UInt16 = 0 // StatusWord
+    public var uid = UUID() // ensure unicity
     
     public init(response: [UInt8]) throws {
         if response.count < SeedkeeperLog.logSize {
