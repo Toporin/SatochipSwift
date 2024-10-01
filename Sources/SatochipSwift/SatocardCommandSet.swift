@@ -102,7 +102,8 @@ public class SatocardCommandSet {
                                            SatocardINS.initSecureChannel.rawValue,
                                            SatocardINS.processSecureChannel.rawValue]
     
-    static let sensitiveInstructionSet: Set = [SatocardINS.bip32ImportSeed.rawValue,
+    static let sensitiveInstructionSet: Set = [SatocardINS.setup.rawValue,
+                                               SatocardINS.bip32ImportSeed.rawValue,
                                                SatocardINS.changePin.rawValue,
                                                SatocardINS.verifyPin.rawValue,
                                                SatocardINS.unblockPin.rawValue,
@@ -344,7 +345,7 @@ public class SatocardCommandSet {
                 label = String(bytes: response.data[1...], encoding: .utf8) ?? "\(response.data[1...])"
             }
         } else if response.sw1 == 0x6d && response.sw2 == 0x00 {
-            label = "(none)"
+            label = "(unsupported)"
         } else {
             NSLog("Error while recovering card label: \(response.sw1) \(response.sw2)")
             label = "(unknown)"

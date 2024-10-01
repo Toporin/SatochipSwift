@@ -34,7 +34,7 @@ public struct SeedkeeperLog: Hashable {
     }
     
     public func toString() -> String {
-        var txt = "ins: \(ins); sid1: \(sid1); sid2: \(sid2); sw12: \(String(format:"%04X", sw));"
+        var txt = "ins: \(String(format:"%02X", ins)); sid1: \(sid1); sid2: \(sid2); sw12: \(String(format:"%04X", sw));"
         return txt
     }
 }
