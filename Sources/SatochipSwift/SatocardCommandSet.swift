@@ -135,7 +135,7 @@ public class SatocardCommandSet {
             
             if rapdu.data.count>=7 {
                 // in new card version, the card status is already provided as response to select
-                cardStatus = try CardStatus(rapdu: rapdu)
+                cardStatus = CardStatus(rapdu: rapdu)
             }
             
             // todo?
@@ -156,7 +156,7 @@ public class SatocardCommandSet {
                     var (rapdu, foundCardType) = try selectApplet(cardType: card)
                     if rapdu.sw == 0x9000 && rapdu.data.count>=7 {
                         // in new card version, the card status is already provided as response to select
-                        cardStatus = try CardStatus(rapdu: rapdu)
+                        cardStatus = CardStatus(rapdu: rapdu)
                     }
                     return (rapdu, foundCardType)
                 } catch let error {
@@ -174,7 +174,7 @@ public class SatocardCommandSet {
         if rapdu.sw == StatusWord.ok.rawValue {
             if rapdu.data.count>=7 {
                 // in new card version, the card status is already provided as response to select
-                cardStatus = try CardStatus(rapdu: rapdu)
+                cardStatus = CardStatus(rapdu: rapdu)
             }
             self.cardType = cardType
         } else {
@@ -196,7 +196,6 @@ public class SatocardCommandSet {
             // for debug purpose
             if !SatocardCommandSet.sensitiveInstructionSet.contains(ins){
                 print("SATOCHIPLIB: card transmit data: \(apduBytes.bytesToHex)");
-                //logger.info("SATOCHIPLIB: card transmit data: \(apduBytes.bytesToHex)");
             } else {
                 print("SATOCHIPLIB: card transmit data: \(apduBytes[0..<5].bytesToHex)\(String(repeating: "*", count: (apduBytes.count-5)))");
             }
@@ -213,7 +212,7 @@ public class SatocardCommandSet {
             if cardStatus!.needsSecureChannel && !SatocardCommandSet.plainInstructionSet.contains(ins){
                 // open secure channel if needed
                 if !secureChannel.open {
-                    _ = try cardInitiateSecureChannel()
+                    let (_, _) = try cardInitiateSecureChannel()
                 }
                 // encrypt apdu
                 //logger.info("Capdu plaintext: \(plainApdu.toHexString())");
@@ -277,29 +276,29 @@ public class SatocardCommandSet {
         //logger.info("SATOCHIPLIB: R-APDU cardGetStatus: \(rapdu.toHexString())");
         
         if rapdu.sw == StatusWord.ok.rawValue {
-            cardStatus = try CardStatus(rapdu: rapdu)
+            cardStatus = CardStatus(rapdu: rapdu)
         }
         
         return rapdu
     }
     
-    public func cardInitiateSecureChannel() throws -> APDUResponse {
+    // Initiate Secure Channel and returns the card public key and a list of possible authentikeys
+    public func cardInitiateSecureChannel() throws -> ([UInt8], [[UInt8]]) {
         
         let clientPubkey:[UInt8] = secureChannel.generateClientKeypair()
         let capdu: APDUCommand = APDUCommand(cla: CLA.proprietary.rawValue, ins: SatocardINS.initSecureChannel.rawValue, p1: 0x00, p2: 0x00, data: clientPubkey)
-        //APDUCommand plainApdu = new APDUCommand(0xB0, INS_INIT_SECURE_CHANNEL, 0x00, 0x00, clientPubkey);
             
         //logger.info("SATOCHIPLIB: CAPDU cardInitiateSecureChannel:  \(capdu.toHexString())")
         let rapdu: APDUResponse = try self.cardTransmit(plainApdu: capdu)
         //logger.info("SATOCHIPLIB: RAPDU cardInitiateSecureChannel: \(rapdu.toHexString())")
         
-        // do something
-        let cardPubkey: [UInt8] = try satochipParser.parseInitiateSecureChannel(rapdu: rapdu)
+        // recover card pubkey and a list of possible authentikeys
+        let (cardPubkey, possibleAuthentikeys) = try satochipParser.parseInitiateSecureChannel(rapdu: rapdu)
         // setup secure channel
         secureChannel.initiateSecureChannel(cardPubKey: cardPubkey)
         //logger.info("SATOCHIPLIB: secure Channel initiated!")
         
-        return rapdu
+        return (cardPubkey, possibleAuthentikeys)
     }
         
     // only valid for Satochip v0.12 and higher

@@ -22,53 +22,66 @@ public class SatocardParser {
     
     public init() {}
     
-    func parseInitiateSecureChannel(rapdu: APDUResponse) throws -> [UInt8] {
+    // Recover card pubkey and a list of potential authentikeys
+    // The list of potential authentikeys contains 1 or 2 candidates, depending on card version
+    func parseInitiateSecureChannel(rapdu: APDUResponse) throws -> ([UInt8], [[UInt8]]) {
         
         let data: [UInt8] = rapdu.data
         //logger.info("SATOCHIPLIB: parseInitiateSecureChannel data: \(data.bytesToHex)")
-
+        
         // data= [coordxSize | coordx | sig1Size | sig1 |  sig2Size | sig2]
         var offset: Int = 0
         let coordxSize: Int = 256*Int(data[offset]) + Int(data[offset+1])
         offset+=2
-        //var coordx:[UInt8] = [UInt8](repeating: 0, count: coordxSize)
         let coordx = data[offset ..< (offset+coordxSize)]
-        //System.arraycopy(data, offset, coordx, 0, coordxSize);
         offset+=coordxSize
         //logger.info("SATOCHIPLIB: parseInitiateSecureChannel coordx: \(coordx.bytesToHex)")
         
         // msg1 is [coordx_size | coordx]
-        //byte[] msg1= new byte[2+coordxSize];
-        //System.arraycopy(data, 0, msg1, 0, msg1.length);
         let msg1 = data[0 ..< offset]
-        // int sig1Size= 256*data[offset++] + data[offset++];
         let sig1Size = 256*Int(data[offset]) + Int(data[offset+1]);
         offset+=2
-        //byte[] sig1= new byte[sig1Size];
-        //System.arraycopy(data, offset, sig1, 0, sig1Size);
         let sig1 = data[offset ..< (offset+sig1Size)]
         offset+=sig1Size
         //logger.info("SATOCHIPLIB: parseInitiateSecureChannel sig1: \(sig1.bytesToHex)")
-        
-        // msg2 is [coordxSize | coordx | sig1Size | sig1]
-        //byte[] msg2= new byte[2+coordxSize + 2 + sig1Size];
-        //System.arraycopy(data, 0, msg2, 0, msg2.length);
-        let msg2 = data[0 ..< offset]
-        //int sig2Size= 256*data[offset++] + data[offset++];
-        let sig2Size = 256*Int(data[offset]) + Int(data[offset+1]);
-        offset+=2
-        //byte[] sig2= new byte[sig2Size];
-        //System.arraycopy(data, offset, sig2, 0, sig2Size);
-        let sig2 = data[offset ..< (offset+sig2Size)]
-        offset+=sig2Size
         
         // recoverPubkey(msg1, sig1, coordx);
         let recoverableSig = try RecoverableSignature(msg: Array(msg1), sig: Array(sig1), coordx: Array(coordx))
         let pubkey: [UInt8] = recoverableSig.publicKey
         //logger.info("SATOCHIPLIB: parseInitiateSecureChannel pubkey: \(pubkey.bytesToHex)")
         
-        // todo: recover from sig2
-        return pubkey;
+        // recover a list of possible authentikeys from sig2
+        // msg2 is [coordxSize | coordx | sig1Size | sig1]
+        let msg2 = Array(data[0 ..< offset])
+        let sig2Size = 256*Int(data[offset]) + Int(data[offset+1])
+        offset+=2
+        let sig2 = Array(data[offset ..< (offset+sig2Size)])
+        offset+=sig2Size
+        
+        // get authentikey coordx (this allows to eliminate wrong potential candidates)
+        // authentikey coordx is only provided starting with Seedkeeper v0.2 and higher
+        var authentikeyCoordx: [UInt8]? = nil
+        var authentikeyCoordxSize = 0
+        if offset<data.count {
+            authentikeyCoordxSize = 256*Int(data[offset]) + Int(data[offset+1])
+            offset+=2
+            if offset+authentikeyCoordxSize <= data.count{
+                authentikeyCoordx = Array(data[offset ..< (offset+authentikeyCoordxSize)])
+            }
+        }
+        
+        var authentikeys = [[UInt8]]()
+        if let authentikeyCoordx = authentikeyCoordx {
+            // recover unique authentikey from msg, sig and coordx
+            let recoverableSig = try RecoverableSignature(msg: msg2, sig: sig2, coordx: authentikeyCoordx)
+            authentikeys = [recoverableSig.publicKey]
+        } else {
+            // recover 2 possible authentikeys from msg and sig
+            let listRecoverableSig = try ListRecoverableSignature(msg: msg2, sig: sig2)
+            authentikeys = listRecoverableSig.pubkeys
+        }
+        
+        return (pubkey, authentikeys)
     }
     
     public func parseBip32GetAuthentikey(rapdu: APDUResponse) throws -> [UInt8] {

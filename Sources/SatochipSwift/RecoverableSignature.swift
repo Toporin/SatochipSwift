@@ -51,3 +51,31 @@ public struct RecoverableSignature {
     }
     
 }
+
+public struct ListRecoverableSignature {
+    public let pubkeys: [[UInt8]]
+    public let r: [UInt8]
+    public let s: [UInt8]
+    
+    public init(msg: [UInt8], sig: [UInt8]) throws {
+        //logger.info("In RecoverableSignature")
+        let hash: [UInt8] = Crypto.shared.sha256(msg)
+        //logger.info("Hash: \(hash.bytesToHex)")
+        
+        let (r, s, _) = try Util.shared.parseToCompactSignature(sigIn: sig)
+        self.r = r
+        self.s = s
+        //logger.info("R: \(self.r.bytesToHex)")
+        //logger.info("S: \(self.s.bytesToHex)")
+        
+        var pubkeyList = [[UInt8]]()
+        for i: UInt8 in 0...3 {
+            let pubkey = Crypto.shared.secp256k1RecoverPublic(r: r, s: s, recId: i, hash: hash)
+            print("Recovered pubkey: \(pubkey.bytesToHex)")
+            pubkeyList.append(pubkey)
+        }
+        self.pubkeys = pubkeyList
+        
+    }
+    
+}
