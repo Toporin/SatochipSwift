@@ -69,7 +69,7 @@ public struct ListRecoverableSignature {
         //logger.info("S: \(self.s.bytesToHex)")
         
         var pubkeyList = [[UInt8]]()
-        for i: UInt8 in 0...3 {
+        for i: UInt8 in 0...1 {
             let pubkey = Crypto.shared.secp256k1RecoverPublic(r: r, s: s, recId: i, hash: hash)
             print("Recovered pubkey: \(pubkey.bytesToHex)")
             pubkeyList.append(pubkey)
