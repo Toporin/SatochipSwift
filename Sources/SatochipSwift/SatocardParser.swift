@@ -7,60 +7,81 @@ public enum ParserError: Error {
     case parseSatodimeGetPrivkeyWrongDataLength(length: Int, expected: Int)
     case parseSatodimeGetPrivkeyWrongSw(sw: UInt16)
     case parseVerifyChallengeResponsePersoWrongDataLength(length: Int, expected: Int)
+    
+    case failedToParseBip32Path(path: String)
+    case failedToRecoverAuthentikey(recovered: String, expected: String)
+    case authentikeyNotSet
+    case missingSignature
+    
 }
 
 public class SatocardParser {
     //let //logger = Logger(label: "io.satochip.parser")
     
+    // todo: make methods static?
+    
     public init() {}
     
-    func parseInitiateSecureChannel(rapdu: APDUResponse) throws -> [UInt8] {
+    // Recover card pubkey and a list of potential authentikeys
+    // The list of potential authentikeys contains 1 or 2 candidates, depending on card version
+    func parseInitiateSecureChannel(rapdu: APDUResponse) throws -> ([UInt8], [[UInt8]]) {
         
         let data: [UInt8] = rapdu.data
         //logger.info("SATOCHIPLIB: parseInitiateSecureChannel data: \(data.bytesToHex)")
-
+        
         // data= [coordxSize | coordx | sig1Size | sig1 |  sig2Size | sig2]
         var offset: Int = 0
         let coordxSize: Int = 256*Int(data[offset]) + Int(data[offset+1])
         offset+=2
-        //var coordx:[UInt8] = [UInt8](repeating: 0, count: coordxSize)
         let coordx = data[offset ..< (offset+coordxSize)]
-        //System.arraycopy(data, offset, coordx, 0, coordxSize);
         offset+=coordxSize
         //logger.info("SATOCHIPLIB: parseInitiateSecureChannel coordx: \(coordx.bytesToHex)")
         
         // msg1 is [coordx_size | coordx]
-        //byte[] msg1= new byte[2+coordxSize];
-        //System.arraycopy(data, 0, msg1, 0, msg1.length);
         let msg1 = data[0 ..< offset]
-        // int sig1Size= 256*data[offset++] + data[offset++];
         let sig1Size = 256*Int(data[offset]) + Int(data[offset+1]);
         offset+=2
-        //byte[] sig1= new byte[sig1Size];
-        //System.arraycopy(data, offset, sig1, 0, sig1Size);
         let sig1 = data[offset ..< (offset+sig1Size)]
         offset+=sig1Size
         //logger.info("SATOCHIPLIB: parseInitiateSecureChannel sig1: \(sig1.bytesToHex)")
-        
-        // msg2 is [coordxSize | coordx | sig1Size | sig1]
-        //byte[] msg2= new byte[2+coordxSize + 2 + sig1Size];
-        //System.arraycopy(data, 0, msg2, 0, msg2.length);
-        let msg2 = data[0 ..< offset]
-        //int sig2Size= 256*data[offset++] + data[offset++];
-        let sig2Size = 256*Int(data[offset]) + Int(data[offset+1]);
-        offset+=2
-        //byte[] sig2= new byte[sig2Size];
-        //System.arraycopy(data, offset, sig2, 0, sig2Size);
-        let sig2 = data[offset ..< (offset+sig2Size)]
-        offset+=sig2Size
         
         // recoverPubkey(msg1, sig1, coordx);
         let recoverableSig = try RecoverableSignature(msg: Array(msg1), sig: Array(sig1), coordx: Array(coordx))
         let pubkey: [UInt8] = recoverableSig.publicKey
         //logger.info("SATOCHIPLIB: parseInitiateSecureChannel pubkey: \(pubkey.bytesToHex)")
         
-        // todo: recover from sig2
-        return pubkey;
+        // recover a list of possible authentikeys from sig2
+        // msg2 is [coordxSize | coordx | sig1Size | sig1]
+        let msg2 = Array(data[0 ..< offset])
+        let sig2Size = 256*Int(data[offset]) + Int(data[offset+1])
+        offset+=2
+        let sig2 = Array(data[offset ..< (offset+sig2Size)])
+        offset+=sig2Size
+        
+        // get authentikey coordx (this allows to eliminate wrong potential candidates)
+        // authentikey coordx is only provided starting with Seedkeeper v0.2 and higher
+        var authentikeyCoordx: [UInt8]? = nil
+        var authentikeyCoordxSize = 0
+        if offset<data.count {
+            authentikeyCoordxSize = 256*Int(data[offset]) + Int(data[offset+1])
+            offset+=2
+            if offset+authentikeyCoordxSize <= data.count{
+                authentikeyCoordx = Array(data[offset ..< (offset+authentikeyCoordxSize)])
+            }
+        }
+        
+        var authentikeys = [[UInt8]]()
+        if let authentikeyCoordx = authentikeyCoordx {
+            // recover unique authentikey from msg, sig and coordx
+            let recoverableSig = try RecoverableSignature(msg: msg2, sig: sig2, coordx: authentikeyCoordx)
+            authentikeys = [recoverableSig.publicKey]
+        } else {
+            // recover 2 possible authentikeys from msg and sig
+            let listRecoverableSig = try ListRecoverableSignature(msg: msg2, sig: sig2)
+            authentikeys = listRecoverableSig.pubkeys
+        }
+        
+        return (pubkey, authentikeys)
     }
     
     public func parseBip32GetAuthentikey(rapdu: APDUResponse) throws -> [UInt8] {
@@ -101,8 +122,199 @@ public class SatocardParser {
         return pubkey
     }
     
+    public func compressPubkey(pubkey: [UInt8]) throws -> [UInt8] {
+        if pubkey.count == 33 {
+            // already compressed
+            return pubkey
+        } else if pubkey.count == 65 {
+            // in uncompressed form
+            var pubkeyComp = Array(pubkey[0..<33])
+            // compute compression byte
+            let parity = pubkey[64]%2
+            if parity == 0 {
+                pubkeyComp[0] = UInt8(0x02)
+            } else {
+                pubkeyComp[0] = UInt8(0x03)
+            }
+            return pubkeyComp
+        } else {
+            throw SatocardError.wrongPubkeyLength(length: pubkey.count, expected: 65)
+        }
+    }
+    
     //****************************************
-    //*               SATODIME               *
+    //*               MARK: BIP32
+    //****************************************
+    
+    public func getBip32PathParentPath(bip32path: String) throws -> String {
+        print("In getBip32PathParentPath")
+        // todo: sanitize path
+        var splitPath = bip32path.components(separatedBy: "/")
+        splitPath = Array(splitPath[0..<splitPath.count-1])
+        let parentPath = splitPath.joined(separator: "/")
+        return parentPath
+    }
+    
+    public func parseBip32PathToBytes(bip32path: String) throws -> (Int, [UInt8]){
+        print("In parseBip32PathToBytes")
+        // todo: sanitize path
+        var splitPath = bip32path.components(separatedBy: "/")
+        if splitPath[0] == "m" {
+            splitPath = Array(splitPath[1..<splitPath.count])
+        }
+        
+        let depth = splitPath.count
+        var bytePath = [UInt8]()
+        for index in 0..<depth {
+            var subpathString = splitPath[index]
+            var subpathInt = UInt32(0)
+            // convert string to Int
+            if subpathString.hasSuffix("'") || subpathString.hasSuffix("h"){
+                subpathString = subpathString.replacingOccurrences(of: "'", with: "")
+                subpathString = subpathString.replacingOccurrences(of: "h", with: "")
+                guard var tmp = UInt32(subpathString) else {
+                    throw ParserError.failedToParseBip32Path(path: bip32path)
+                }
+                subpathInt = tmp + UInt32(0x80000000)
+                
+            } else {
+                guard var tmp = UInt32(subpathString) else {
+                    throw ParserError.failedToParseBip32Path(path: bip32path)
+                }
+                subpathInt = tmp
+            }
+            // convert UInt to byte array
+            let subPathBytes = subpathInt.toBytes
+            bytePath += subPathBytes
+        }
+        return (depth, bytePath)
+    }
+    
+    public func parseBip32GetExtendedKey(response: [UInt8]) throws -> ([UInt8],[UInt8]) {
+        print("In parseBip32GetExtendedKey")
+        //todo
+//        guard authentikey == nil {
+//            throw ParserError.authentikeyNotSet
+//        }
+            
+        // double signature: first is self-signed, second by authentikey
+        // firs self-signed sig: data= coordx
+        print("[CardDataParser] parseBip32GetExtendedKey: first signature recovery")
+        let chaincodeBytes = Array(response[0..<32])
+        let dataSize = ((Int(response[32]) & 0x7f)<<8) + (Int(response[33]) & 0xff) // (response[32] & 0x80) is ignored (optimization flag)
+        let data = Array(response[34..<(32+2+dataSize)])
+        let msgSize = 32+2+dataSize
+        let msg = Array(response[0..<msgSize])
+        let sigSize = ((Int(response[msgSize]) & 0xff)<<8) + (Int(response[msgSize+1]) & 0xff)
+        let signature = Array(response[(msgSize+2)..<(msgSize+2+sigSize)])
+        if sigSize==0 {
+            throw ParserError.missingSignature
+        }
+           
+        // self-signed
+        let coordx = data
+        let recoverableSig = try RecoverableSignature(msg: msg, sig: signature, coordx: coordx)
+        let pubkeyBytes: [UInt8] = recoverableSig.publicKey
+        print("[CardDataParser] parseBip32GetExtendedKey coordx: \(coordx.bytesToHex)")
+        print("[CardDataParser] parseBip32GetExtendedKey pubkey: \(pubkeyBytes.bytesToHex)")
+        
+        // todo
+        // second signature by authentikey
+//        print("[CardDataParser] parseBip32GetExtendedKey: second signature recovery")
+//        let msg2Size = msgSize+2+sigSize
+//        let msg2 = Array(response[0..<msg2Size])
+//        let sig2Size = ((Int(response[msg2Size]) & 0xff)<<8) + (Int(response[msg2Size+1]) & 0xff)
+//        let signature2 = Array(response[(msg2Size+2)..<(msg2Size+2+sig2Size)])
+//        let recoverableSig2 = try RecoverableSignature(msg: msg2, sig: signature2, coordx: authentikeyCoordx)
+//        let recoveredAuthentikeyBytes = recoverableSig2.publicKey
+//        if recoveredAuthentikeyBytes != authentikeyBytes {
+//            throw ParserError.failedToRecoverAuthentikey(recovered: recoveredAuthentikeyBytes.bytesToHex, expected: authentikeyBytes)
+//        }
+//        
+        return (pubkeyBytes, chaincodeBytes)
+        
+    }
+
+    public func parseBip32GetExtendedPrivkey(response: [UInt8]) throws -> ([UInt8], [UInt8]){
+        print("In parseBip32GetExtendedPrivkey")
+        //todo
+//        guard authentikey == nil {
+//            throw ParserError.authentikeyNotSet
+//        }
+            
+        // double signature: first is self-signed, second by authentikey
+        // firs self-signed sig: data= coordx
+        print("[CardDataParser] parseBip32GetExtendedPrivkey: first signature recovery")
+        let chaincodeBytes = Array(response[0..<32])
+        let dataSize = ((Int(response[32]) & 0x7f)<<8) + (Int(response[33]) & 0xff) // (response[32] & 0x80) is ignored (optimization flag)
+        let data = Array(response[34..<(32+2+dataSize)])
+        let msgSize = 32+2+dataSize
+        let msg = Array(response[0..<msgSize])
+        let sigSize = ((Int(response[msgSize]) & 0xff)<<8) + (Int(response[msgSize+1]) & 0xff)
+        let signature = Array(response[(msgSize+2)..<(msgSize+2+sigSize)])
+        if sigSize==0 {
+            throw ParserError.missingSignature
+        }
+           
+        // self-signed
+        let privkeyBytes = data
+        print("[CardDataParser] parseBip32GetExtendedPrivkey privkey: \(privkeyBytes.bytesToHex)")
+        // todo verify sig?
+        
+        // todo
+        // second signature by authentikey
+//        print("[CardDataParser] parseBip32GetExtendedKey: second signature recovery")
+//        let msg2Size = msgSize+2+sigSize
+//        let msg2 = Array(response[0..<msg2Size])
+//        let sig2Size = ((Int(response[msg2Size]) & 0xff)<<8) + (Int(response[msg2Size+1]) & 0xff)
+//        let signature2 = Array(response[(msg2Size+2)..<(msg2Size+2+sig2Size)])
+//        let recoverableSig2 = try RecoverableSignature(msg: msg2, sig: signature2, coordx: authentikeyCoordx)
+//        let recoveredAuthentikeyBytes = recoverableSig2.publicKey
+//        if recoveredAuthentikeyBytes != authentikeyBytes {
+//            throw ParserError.failedToRecoverAuthentikey(recovered: recoveredAuthentikeyBytes.bytesToHex, expected: authentikeyBytes)
+//        }
+//
+        return (privkeyBytes, chaincodeBytes)
+    }
+    
+    public func parseBip32GetExtendedBip85Key(response: [UInt8]) throws -> ([UInt8],[UInt8]) {
+        print("In parseBip32GetExtendedBip85Key")
+        //todo
+//        guard authentikey == nil {
+//            throw ParserError.authentikeyNotSet
+//        }
+            
+        // double signature: first is self-signed, second by authentikey
+        // firs self-signed sig: data= coordx
+        print("[CardDataParser] parseBip32GetExtendedBip85Key: first signature recovery")
+        let entropySize = 256*Int(response[0]) + Int(response[1])
+        let entropyBytes = Array(response[2..<(2+entropySize)])
+        let msgSize = 2 + entropySize
+        let msg = Array(response[0..<msgSize])
+        let sigSize = ((Int(response[msgSize]) & 0xff)<<8) + (Int(response[msgSize+1]) & 0xff)
+        let signature = Array(response[(msgSize+2)..<(msgSize+2+sigSize)])
+        if sigSize==0 {
+            throw ParserError.missingSignature
+        }
+        
+        // todo
+        // second signature by authentikey
+//        print("[CardDataParser] parseBip32GetExtendedKey: second signature recovery")
+//        let msg2Size = msgSize+2+sigSize
+//        let msg2 = Array(response[0..<msg2Size])
+//        let sig2Size = ((Int(response[msg2Size]) & 0xff)<<8) + (Int(response[msg2Size+1]) & 0xff)
+//        let signature2 = Array(response[(msg2Size+2)..<(msg2Size+2+sig2Size)])
+//        let recoverableSig2 = try RecoverableSignature(msg: msg2, sig: signature2, coordx: authentikeyCoordx)
+//        let recoveredAuthentikeyBytes = recoverableSig2.publicKey
+//        if recoveredAuthentikeyBytes != authentikeyBytes {
+//            throw ParserError.failedToRecoverAuthentikey(recovered: recoveredAuthentikeyBytes.bytesToHex, expected: authentikeyBytes)
+//        }
+//
+        return (entropyBytes, [UInt8]())
+    }
+    
+    //****************************************
+    //*               MARK: SATODIME
     //****************************************
     
     public func parseSatodimeGetPubkey(rapdu: APDUResponse) throws -> [UInt8] {
@@ -225,7 +437,7 @@ public class SatocardParser {
     
     
     //****************************************
-    //*              PKI PARSER              *
+    //*              MARK: PKI PARSER
     //****************************************
     
     public func convertBytesToStringPem(certBytes: [UInt8]) -> String {

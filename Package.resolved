@@ -1,12 +1,30 @@
 {
   "pins" : [
     {
+      "identity" : "bigint",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/attaswift/BigInt.git",
+      "state" : {
+        "revision" : "0ed110f7555c34ff468e72e1686e59721f2b0da6",
+        "version" : "5.3.0"
+      }
+    },
+    {
       "identity" : "cryptoswift",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/krzyzanowskim/CryptoSwift.git",
       "state" : {
         "revision" : "3a2acbb32ab68215ee1596ee6004da8e90c3721b",
         "version" : "1.0.0"
+      }
+    },
+    {
+      "identity" : "mnemonicswift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Electric-Coin-Company/MnemonicSwift.git",
+      "state" : {
+        "revision" : "716a2c32ac2bbd8a1499ac834077df42b75edc85",
+        "version" : "2.2.4"
       }
     },
     {
@@ -19,12 +37,12 @@
       }
     },
     {
-      "identity" : "swift-log",
+      "identity" : "swift-crypto",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/apple/swift-log.git",
+      "location" : "https://github.com/apple/swift-crypto.git",
       "state" : {
-        "revision" : "32e8d724467f8fe623624570367e3d50c5638e46",
-        "version" : "1.5.2"
+        "revision" : "60f13f60c4d093691934dc6cfdf5f508ada1f894",
+        "version" : "2.6.0"
       }
     },
     {

@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "SatochipSwift",
     platforms: [
-        .iOS(.v11)
+        .iOS(.v13)
     ],
     products: [
         // Products define the executables and libraries a package produces, and make them visible to other packages.
@@ -21,6 +21,8 @@ let package = Package(
         .package(url: "https://github.com/GigaBitcoin/secp256k1.swift.git", from:"0.10.0"),
         .package(url: "https://github.com/krzyzanowskim/CryptoSwift.git", .upToNextMinor(from:"1.0.0")),
         .package(url: "https://github.com/marmelroy/Zip.git", .upToNextMinor(from:"2.1.0")),
+        .package(url: "https://github.com/Electric-Coin-Company/MnemonicSwift.git", .upToNextMajor(from: "2.2.4")),
+        .package(url: "https://github.com/attaswift/BigInt.git", from: "5.0.0")
         //.package(url: "https://github.com/apple/swift-log.git", from:"1.0.0"),
     ],
     targets: [
@@ -32,6 +34,8 @@ let package = Package(
                 "CryptoSwift",
                 "Zip",
                 "SwiftTLS",
+                "MnemonicSwift",
+                "BigInt",
                 .product(name: "secp256k1", package: "secp256k1.swift"),
             ]),
         .testTarget(

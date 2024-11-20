@@ -7,7 +7,7 @@
 
 import Foundation
 
-// Certificates used to authenticates genuine Satochip, Satodime & SeedKeeper.
+// Certificates used to authenticates genuine Satochip, Satodime & Seedkeeper.
 public struct PkiCertificates {
     
     // warning: the last '\n' is required for correct parsing of PEM string

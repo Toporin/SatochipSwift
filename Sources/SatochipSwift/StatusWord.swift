@@ -47,8 +47,8 @@ public enum StatusWord: UInt16, Error {
     case incorrectTxHash = 0x9C15 // Incorrect transaction hash
     case secondFactorInitialized = 0x9C18 // 2FA already initialized
     case secondFactorUninitialized = 0x9C19 // 2FA uninitialized
-    
-    // secure import
+        
+    // secure import (Satochip & Seedkeeper)
     case secureImportDataTooLong = 0x9C32 // Secret data is too long for import
     case secureImportIncorrectMac = 0x9C33 // Wrong HMAC when importing Secret through Secure import
     case secureImportIncorrectFingerprint = 0x9C34 // Wrong Fingerprint when importing Secret through Secure import
@@ -57,6 +57,10 @@ public enum StatusWord: UInt16, Error {
     // Satodime
     
     // seedkeeeper
+    case lockError = 0x9C30
+    case exportNotAllowed = 0x9C31
+    case usageNotAllowed = 0x9C36
+    case wrongSecretType = 0x9C38
     
 }
 

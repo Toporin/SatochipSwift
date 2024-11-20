@@ -36,6 +36,8 @@ public struct APDUResponse {
             throw CardError.wrongPIN(retryCounter: Int(self.sw2 & 0x0F))
         } else if self.sw == StatusWord.wrongPINLegacy.rawValue {
             throw CardError.wrongPINLegacy
+        } else if self.sw == StatusWord.identityBlocked.rawValue {
+            throw CardError.pinBlocked
         } else {
             return try checkOK()
         }

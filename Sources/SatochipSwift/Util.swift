@@ -4,7 +4,7 @@ enum UtilError: Error {
     case wrongSignatureCheckbyte(expected: UInt8, received: UInt8)
 }
 
-extension Collection where Element == Character {
+public extension Collection where Element == Character {
     var hexToBytes: [UInt8] {
         var last = first
         return dropFirst().compactMap {
@@ -39,7 +39,7 @@ extension Array where Element == UInt8 {
   }
 }
 
-extension Array where Element == UInt8 {
+public extension Array where Element == UInt8 {
     var bytesToHex: String {
         var hexString: String = ""
         var count = self.count
