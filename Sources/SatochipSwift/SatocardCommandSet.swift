@@ -17,6 +17,16 @@ public enum SatocardError: Error {
     case unsupportedLegacyOptionDuringBip32Derivation
     case wrongPubkeyLength(length: Int, expected: Int)
     case wrongXpubLength(length: Int, expected: Int)
+    
+    // Satocash error
+    case memoryError(sw1: UInt8 = 0x9C, sw2: UInt8 = 0x01, message: String = "Not enough memory available")
+    case wrongLengthError(sw1: UInt8 = 0x67, sw2: UInt8 = 0x00, message: String = "Wrong length error")
+    case invalidParameterError(sw1: UInt8 = 0x9C, sw2: UInt8 = 0x0F, message: String = "Data provided to card is invalid")
+    case incorrectP1Error(sw1: UInt8 = 0x9C, sw2: UInt8 = 0x10, message: String = "P1 parameter provided to card is invalid")
+    case incorrectP2Error(sw1: UInt8 = 0x9C, sw2: UInt8 = 0x11, message: String = "P2 parameter provided to card is invalid")
+    case operationNotAllowedError(sw1: UInt8 = 0x9C, sw2: UInt8 = 0x03, message: String = "Operation is not allowed by the card policy")
+    case incorrectInitializationError(sw1: UInt8 = 0x9C, sw2: UInt8 = 0x13, message: String = "Incorrect initialization of operations")
+    case objectAlreadyPresentError(sw1: UInt8 = 0x9C, sw2: UInt8 = 0x60, message: String = "Imported object is already present")
 }
 
 public enum SatodimeApiError: Error {
@@ -28,6 +38,11 @@ public enum SatodimeApiError: Error {
 
 public enum SeedkeeperApiError: Error {
     case wrongSecretSize(size: Int)
+    
+}
+
+public enum SatocashApiError: Error {
+    case wrongExportKeysetsSize(length: Int, expected: Int)
     
 }
 
@@ -64,6 +79,7 @@ public enum CardType: String {
     case satochip = "satochip"
     case satodime = "satodime"
     case seedkeeper = "seedkeeper"
+    case satocash = "satocash"
     case unknown = "unknown"
     case nocard = "nocard"
     case anycard = "anycard"
@@ -76,6 +92,8 @@ public enum CardType: String {
             return SatocardIdentifier.satodimeAID.bytesValue
         case .seedkeeper:
             return SatocardIdentifier.seedkeeperAID.bytesValue
+        case .satocash:
+            return SatocardIdentifier.satocashAID.bytesValue
         case .nocard:
             return [UInt8]()
         case .unknown:
@@ -93,6 +111,7 @@ public class SatocardCommandSet {
     let secureChannel: SecureChannel
     let satochipParser: SatocardParser
     public var cardStatus: CardStatus?
+    public var satocashStatus: SatocashStatus?
     public var satodimeStatus: SatodimeStatus
     public var cardType: CardType
     public var isSecureChannelOpen: Bool { return secureChannel.open }
@@ -151,7 +170,7 @@ public class SatocardCommandSet {
         }
         
         if cardType == CardType.anycard {
-            for card in [CardType.satodime, CardType.seedkeeper, CardType.satochip] {
+            for card in [CardType.satodime, CardType.seedkeeper, CardType.satochip, CardType.satocash] {
                 do {
                     var (rapdu, foundCardType) = try selectApplet(cardType: card)
                     if rapdu.sw == 0x9000 && rapdu.data.count>=7 {
@@ -175,6 +194,7 @@ public class SatocardCommandSet {
             if rapdu.data.count>=7 {
                 // in new card version, the card status is already provided as response to select
                 cardStatus = CardStatus(rapdu: rapdu)
+                // todo: satocash status for satocash card
             }
             self.cardType = cardType
         } else {
@@ -325,32 +345,33 @@ public class SatocardCommandSet {
         let p1: UInt8 = 0x00
         let p2: UInt8 = 0x01 // get
         
-        let command = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: [])
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: [])
         
-        let response = try self.cardTransmit(plainApdu: command)
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
         
         var label: String
         
-        if response.sw1 == 0x90 && response.sw2 == 0x00 {
-            let labelSize = response.data[0] //response[0]
-            do {
-                if let labelData = String(data: Data(response.data[1...]), encoding: .utf8) {
-                    label = labelData
-                } else {
-                    throw NSError(domain: "UnicodeDecodeError", code: 0, userInfo: nil)
-                }
-            } catch {
-                NSLog("UnicodeDecodeError while decoding card label !")
-                label = String(bytes: response.data[1...], encoding: .utf8) ?? "\(response.data[1...])"
-            }
-        } else if response.sw1 == 0x6d && response.sw2 == 0x00 {
+        if rapdu.sw1 == 0x90 && rapdu.sw2 == 0x00 {
+            let labelSize = rapdu.data[0] //response[0]
+            label = String(bytes: rapdu.data[1...], encoding: .utf8) ?? "\(rapdu.data[1...])"
+//            do {
+//                if let labelData = String(data: Data(rapdu.data[1...]), encoding: .utf8) {
+//                    label = labelData
+//                } else {
+//                    throw NSError(domain: "UnicodeDecodeError", code: 0, userInfo: nil)
+//                }
+//            } catch {
+//                NSLog("UnicodeDecodeError while decoding card label !")
+//                label = String(bytes: rapdu.data[1...], encoding: .utf8) ?? "\(rapdu.data[1...])"
+//            }
+        } else if rapdu.sw1 == 0x6d && rapdu.sw2 == 0x00 {
             label = "(unsupported)"
         } else {
-            NSLog("Error while recovering card label: \(response.sw1) \(response.sw2)")
+            NSLog("Error while recovering card label: \(rapdu.sw1) \(rapdu.sw2)")
             label = "(unknown)"
         }
         
-        // return (response, sw1, sw2, label)
+        // return (rapdu, sw1, sw2, label)
         return label
     }
     
@@ -368,11 +389,11 @@ public class SatocardCommandSet {
         var data: [UInt8] = [UInt8(labelData.count)]
         data += [UInt8](labelData)
         
-        let command = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
         
         do {
-            let response = try self.cardTransmit(plainApdu: command)
-            return response.sw1 == 0x90 && response.sw2 == 0x00
+            let rapdu = try self.cardTransmit(plainApdu: capdu)
+            return rapdu.sw1 == 0x90 && rapdu.sw2 == 0x00
         } catch {
             return false
         }
@@ -404,10 +425,10 @@ public class SatocardCommandSet {
                 
         let data: [UInt8] = [UInt8(oldPin.count)] + oldPin + [UInt8(newPin.count)] + newPin
         
-        let command = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
-        let response = try self.cardTransmit(plainApdu: command)
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
                 
-        return response
+        return rapdu
     }
 
     
@@ -1713,7 +1734,250 @@ public class SatocardCommandSet {
     }
     
     //****************************************
-    //*            PKI commands              *
+    //*            MARK: SATOCASH            *
+    //****************************************
+    
+    public func satocashGetStatus(sendEncrypted: Bool = true) throws -> APDUResponse {
+        //logger.info("in satocashGetStatus - info");
+        
+        let capdu: APDUCommand = APDUCommand(cla: CLA.proprietary.rawValue, ins: SatocardINS.satocashGetStatus.rawValue, p1: 0x00, p2: 0x00, data: [])
+        
+        //logger.info("SATOCHIPLIB: C-APDU cardGetStatus:  \(capdu.toHexString())");
+        let rapdu: APDUResponse
+        if sendEncrypted {
+            rapdu = try self.cardTransmit(plainApdu: capdu);
+        } else {
+            rapdu = try cardChannel.send(capdu)
+        }
+        //logger.info("SATOCHIPLIB: R-APDU cardGetStatus: \(rapdu.toHexString())");
+        
+        if rapdu.sw == StatusWord.ok.rawValue {
+            satocashStatus = SatocashStatus(rapdu: rapdu)
+        }
+        
+        return rapdu
+    }
+
+    public func satocashImportMint(mintUrl: String) throws -> (APDUResponse, UInt8) {
+        print("In satocashImportMint")
+        let cla = CLA.proprietary.rawValue
+        let ins = SatocardINS.satocashImportMint.rawValue
+        let p1 = UInt8(0x00)
+        let p2 = UInt8(0x00)
+        let data: [UInt8] = [UInt8(Array(mintUrl.utf8).count)] + Array(mintUrl.utf8)
+        
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
+        
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        try rapdu.checkOK()
+        
+        // parse response
+        let response = rapdu.data
+        let index: UInt8 = response[0]
+        
+        return (rapdu, index)
+    }
+
+    public func satocashExportMint(index: UInt8) throws -> (APDUResponse, String) {
+        print("In satocashExportMint")
+        let cla = CLA.proprietary.rawValue
+        let ins = SatocardINS.satocashExportMint.rawValue
+        let p1 = index
+        let p2 = UInt8(0x00)
+        
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: [])
+        
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        try rapdu.checkOK()
+        
+        // parse response
+        let data = rapdu.data
+        let url_size = data[0]
+        let url_bytes = data[1 ..< (Int(url_size)+1)]
+        let url = String(bytes: url_bytes, encoding: .utf8) ?? url_bytes.bytesToHex // todo throw if nil?
+        
+        return (rapdu, url)
+    }
+
+    public func satocashRemoveMint(index: UInt8) throws -> APDUResponse {
+        print("In satocashRemoveMint")
+        let cla = CLA.proprietary.rawValue
+        let ins = SatocardINS.satocashRemoveMint.rawValue
+        let p1 = index
+        let p2 = UInt8(0x00)
+        
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: [])
+        
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        try rapdu.checkOK()
+        
+        return rapdu
+    }
+
+    public func satocashImportKeyset(keysetIdBytes: [UInt8], mintIndex: UInt8, unit: UInt8) throws -> (APDUResponse, UInt8) {
+        print("In satocashImportKeyset")
+        let cla = CLA.proprietary.rawValue
+        let ins = SatocardINS.satocashImportKeyset.rawValue
+        let p1 = UInt8(0x00)
+        let p2 = UInt8(0x00)
+        let data = keysetIdBytes + [mintIndex] + [unit]
+        
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
+        
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        try rapdu.checkOK()
+        
+        // parse response
+        let response = rapdu.data
+        let index: UInt8 = response[0]
+        
+        return (rapdu, index)
+    }
+
+    public func satocashExportKeysets(indexes: [UInt8]) throws -> (APDUResponse, [UInt8:SatocashKeyset]) {
+        print("In satocashExportKeyset")
+        let cla = CLA.proprietary.rawValue
+        let ins = SatocardINS.satocashExportKeyset.rawValue
+        let p1 = UInt8(0x00)
+        let p2 = UInt8(0x00)
+        var data: [UInt8] = [UInt8(indexes.count)] + indexes
+        
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        try rapdu.checkOK()
+        
+        // parse response
+        let response = rapdu.data
+        if (response.count != (indexes.count)*11){
+            throw SatocashApiError.wrongExportKeysetsSize(length: response.count, expected: (indexes.count)*11)
+        }
+        
+        var keysetDic: [UInt8:SatocashKeyset] = [:]
+        for index in 0..<indexes.count {
+            let pos = 11*index
+            let keyset = SatocashKeyset(bytes: Array(response[pos..<(pos+11)]))
+            keysetDic[keyset.index] = keyset
+        }
+        
+        return (rapdu, keysetDic)
+    }
+
+    public func satocashRemoveKeyset(index: UInt8) throws -> APDUResponse {
+        print("In satocashRemoveKeyset")
+        let cla = CLA.proprietary.rawValue
+        let ins = SatocardINS.satocashRemoveKeyset.rawValue
+        let p1 = index
+        let p2 = UInt8(0x00)
+        
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: [])
+        
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        try rapdu.checkOK()
+        
+        return rapdu
+    }
+
+    public func satocashImportProof(keysetIndex: UInt8, amountExponent: UInt8, secretBytes: [UInt8], unblindedKeyBytes: [UInt8]) throws -> (APDUResponse, UInt16){
+        print("In satocashImportProof")
+        let cla = CLA.proprietary.rawValue
+        let ins = SatocardINS.satocashImportProof.rawValue
+        let p1 = UInt8(0x00)
+        let p2 = UInt8(0x00)
+        
+        // data: [keyset_index(1b) | amount_exponent(1b) | unblinded_key(33b) | secret(32b)]
+        let data = [keysetIndex, amountExponent] + unblindedKeyBytes + secretBytes
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
+        
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        try rapdu.checkOK()
+        
+        // parse response
+        let response = rapdu.data
+        let index: UInt16 = UInt16(response[0]<<8 + response[1])
+        
+        return (rapdu, index)
+    }
+
+    public func satocashExportProofs(indexes: [UInt16]) throws -> [UInt16:SatocashProof] {
+        print("In satocashExportProofs")
+        let cla = CLA.proprietary.rawValue
+        let ins = SatocardINS.satocashExportProofs.rawValue
+        let p1 = UInt8(0x00)
+        
+        // OP_INIT
+        var p2 = UInt8(0x01)
+        
+        // data (OP_INIT): [ proof_index_list_size(1b) | proof_index(2b) ... | 2FA_size(1b) | 2FA ]
+        var data: [UInt8] = [UInt8(indexes.count)]
+        for index in indexes{
+            data += [UInt8(index>>8), UInt8(index%256)]
+        }
+            
+        var proof_counter = 0
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
+        
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        try rapdu.checkOK()
+        // parse into proofs
+        var proofDic: [UInt16:SatocashProof] = [:]
+        var response = rapdu.data
+        var pos = 0
+        while (pos < response.count) {
+            let proofBytes = Array(response[pos..<(pos+70)])
+            if let proof = SatocashProof(bytes: proofBytes){
+                proofDic[proof.index] = proof
+            }
+            pos+=70
+            proof_counter+=1
+        }
+        
+        // OP_PROCESS
+        p2 = UInt8(0x02)
+        
+        while (true){
+            // check if all proofs have been recovered
+            if (proof_counter == indexes.count){
+                return proofDic
+            }
+              
+            let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: [])
+            let rapdu = try self.cardTransmit(plainApdu: capdu)
+            try rapdu.checkOK()
+            
+            pos = 0
+            response = rapdu.data
+            while (pos < response.count) {
+                let proofBytes = Array(response[pos..<(pos+70)])
+                if let proof = SatocashProof(bytes: proofBytes){
+                    proofDic[proof.index] = proof
+                }
+                pos+=70
+                proof_counter+=1
+            }
+            
+        }
+
+        return proofDic
+    }
+
+    public func satocashGetProofInfo(unit: UInt8, infoType: UInt8, indexStart: UInt16, indexSize: UInt16) throws -> APDUResponse {
+        print("In satocashGetProofInfo")
+        let cla = CLA.proprietary.rawValue
+        let ins = SatocardINS.satocashGetProofInfo.rawValue
+        let p1 = unit
+        let p2 = infoType
+        
+        let data = [UInt8(indexStart>>8), UInt8(indexStart%256)] + [UInt8(indexSize>>8), UInt8(indexSize%256)]
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
+        
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        try rapdu.checkOK()
+        
+        return rapdu
+    }
+    
+    //****************************************
+    //*         MARK: PKI commands           *
     //****************************************
         
     public func cardExportPersoPubkey() throws -> APDUResponse {
@@ -1932,11 +2196,6 @@ public class SatocardCommandSet {
         // success!
         return (PkiReturnCode.success, dic)
     }
-    
-    //****************************************
-    //*               SEEDKEEPER             *
-    //****************************************
-    
     
 }
 

@@ -48,7 +48,7 @@ public extension Array where Element == UInt8 {
             hexString.append(String(format:"%02X", byte))
             count = count - 1
         }
-        return hexString
+        return hexString.lowercased()
     }
 }
 

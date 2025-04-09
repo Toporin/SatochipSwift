@@ -172,13 +172,13 @@ public class SatocardParser {
             if subpathString.hasSuffix("'") || subpathString.hasSuffix("h"){
                 subpathString = subpathString.replacingOccurrences(of: "'", with: "")
                 subpathString = subpathString.replacingOccurrences(of: "h", with: "")
-                guard var tmp = UInt32(subpathString) else {
+                guard let tmp = UInt32(subpathString) else {
                     throw ParserError.failedToParseBip32Path(path: bip32path)
                 }
                 subpathInt = tmp + UInt32(0x80000000)
                 
             } else {
-                guard var tmp = UInt32(subpathString) else {
+                guard let tmp = UInt32(subpathString) else {
                     throw ParserError.failedToParseBip32Path(path: bip32path)
                 }
                 subpathInt = tmp
@@ -442,7 +442,7 @@ public class SatocardParser {
     
     public func convertBytesToStringPem(certBytes: [UInt8]) -> String {
         //logger.info("In convertBytesToStringPem")
-        let certBase64Raw: String = certBytes.toBase64()!
+        let certBase64Raw: String = certBytes.toBase64()
         //logger.info("certBase64Raw: \(certBase64Raw)")
         
         // divide in fixed size chunk

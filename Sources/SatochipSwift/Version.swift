@@ -36,11 +36,18 @@ public struct Version {
     public static let SATODIME_PROTOCOL_MINOR_VERSION = 1
     public static let SATODIME_PROTOCOL_VERSION = (SATODIME_PROTOCOL_MAJOR_VERSION<<8)+SATODIME_PROTOCOL_MINOR_VERSION
 
+    // Satocash supported version tuple
+    // v 0.1: initial version
+    public static let SATOCASH_PROTOCOL_MAJOR_VERSION = 0
+    public static let SATOCASH_PROTOCOL_MINOR_VERSION = 1
+    public static let SATOCASH_PROTOCOL_VERSION = (SATOCASH_PROTOCOL_MAJOR_VERSION<<8)+SATOCASH_PROTOCOL_MINOR_VERSION
+
     // SatochipSwift version
     // v0.1.0 initial version (satodime only)
     // v0.2.0 add Seedkeeper support
+    // v0.3.0 add Satocash support (WIP)
     public static let SATOCHIPSWIFT_MAJOR_VERSION = 0
-    public static let SATOCHIPSWIFT_MINOR_VERSION = 2
+    public static let SATOCHIPSWIFT_MINOR_VERSION = 3
     public static let SATOCHIPSWIFT_REVISION = 0
     public static let SATOCHIPSWIFT_VERSION = String(SATOCHIPSWIFT_MAJOR_VERSION) + "." + String(SATOCHIPSWIFT_MINOR_VERSION) + "." + String(SATOCHIPSWIFT_REVISION)
 }

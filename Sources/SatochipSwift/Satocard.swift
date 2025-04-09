@@ -21,6 +21,9 @@ public enum SatocardINS: UInt8 {
     case listPins = 0x48
     case getStatus = 0x3C
     case cardLabel = 0x3D
+    case setNfcPolicy = 0x3E
+    case setNdef = 0x3F
+    case setPinPolicy = 0x3A
     //secureChannel
     case initSecureChannel = 0x81
     case processSecureChannel = 0x82
@@ -74,6 +77,17 @@ public enum SatocardINS: UInt8 {
     case listSecretHeaders = 0xA6
     case printLogs = 0xA9
     case deriveMasterPassword =  0xAF
+    // satocash
+    case satocashGetStatus = 0xB0
+    case satocashImportMint = 0xB1
+    case satocashExportMint = 0xB2
+    case satocashRemoveMint = 0xB3
+    case satocashImportKeyset = 0xB4
+    case satocashExportKeyset = 0xB5
+    case satocashRemoveKeyset = 0xB6
+    case satocashImportProof = 0xB7
+    case satocashExportProofs = 0xB8
+    case satocashGetProofInfo = 0xB9
 }
 
 struct SatocardCst {
@@ -99,6 +113,7 @@ public enum SatocardIdentifier: String {
     case satochipAID = "5361746f43686970" //SatoChip
     case seedkeeperAID = "536565644b6565706572" //SeedKeeper
     case satodimeAID = "5361746f44696d65" //SatoDime
+    case satocashAID = "5361746f63617368" //Satocash
     
     public var bytesValue: [UInt8] {
         return rawValue.hexToBytes

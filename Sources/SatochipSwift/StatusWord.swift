@@ -31,7 +31,9 @@ public enum StatusWord: UInt16, Error {
     case resetToFactory = 0xFF00 // Card has been reset to factory
     case insDeprecated = 0x9C26 // For instructions that have been deprecated
     case debugFlag = 0x9FFF // for debugging purpose 2
-
+    case wrongLength = 0x6700 // Wrong length error
+    case objectAlreadyPresent = 0x9C60 // Imported object is already present
+    
     // secure channel
     case secureChannelRequired = 0x9C20
     case secureChannelUninitialized = 0x9C21
