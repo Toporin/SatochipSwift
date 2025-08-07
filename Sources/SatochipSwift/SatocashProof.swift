@@ -23,8 +23,12 @@ public enum SatocashInfoType: UInt8 {
 
 public struct SatocashProof {
     
+    public static let MASK_SPENT_STATUS: UInt8 = 0x03
+    public static let MASK_P2PK_STATUS: UInt8 = 0x80
+    
     public var index: UInt16 = 0
     public var state: UInt8 = 0
+    public var is_p2pk: Bool = false
     public var keysetIndex: UInt8 = 0
     public var amountExponent: UInt8 = 0
     public var amount: Int = 0
@@ -36,7 +40,8 @@ public struct SatocashProof {
         // response format [proof_index(2b) | proof_state(1b) | keyset_index(1b) | amount_exponent(1b) | unblinded_key(33b) | secret(32b)]
         if (bytes.count >= 70){
             index = UInt16(bytes[0]<<8 + bytes[1])
-            state = bytes[2] // todo check
+            state = (bytes[2] & SatocashProof.MASK_SPENT_STATUS) // extract 2 least significant bits as proof spent status (empty/unspent/spent/rfu)
+            is_p2pk = ((bytes[2] & SatocashProof.MASK_P2PK_STATUS)==SatocashProof.MASK_P2PK_STATUS) //extract most significant bit as P2PK flag
             keysetIndex = bytes[3]
             amountExponent = bytes[4] // todo check and parse?
             if (state == 0x00) || (amountExponent == 0xFF){
@@ -59,6 +64,7 @@ public struct SatocashProof {
     public func toString() -> String {
         return "index: \(index) \n" +
                 "state: \(state) \n" +
+                "is_p2pk: \(is_p2pk) \n" +
                 "keysetIndex: \(keysetIndex) \n" +
                 "amountExponent: \(amountExponent) \n" +
                 "amount: \(amount) \n" +
