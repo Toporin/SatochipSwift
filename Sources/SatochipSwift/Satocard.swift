@@ -43,6 +43,11 @@ public enum SatocardINS: UInt8 {
     case set2FaKey = 0x79
     case reset2FaKey = 0x78
     case signTransactionHash = 0x7A
+    case taprootTweakPrivkey = 0x7C
+    case signSchnorrHash = 0x7B
+    case musig2GenerateNonce = 0x7E
+    case musig2SignHash = 0x7F
+
     //secureImportFromSeedkeeper
     case importEncryptedSecret = 0xAC
     case importTrustedPubkey = 0xAA

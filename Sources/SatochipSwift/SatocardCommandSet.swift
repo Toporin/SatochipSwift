@@ -802,7 +802,347 @@ public class SatocardCommandSet {
     //*               MARK: SATOCHIP
     //****************************************
     
-    // Todo!
+    /**
+     * Signs a transaction hash using the specified key with optional 2FA.
+     *
+     * This method creates a digital signature for a transaction hash using either
+     * a specific key slot or the BIP32-derived key.
+     *
+     * Key number values:
+     * - 0x00-0xFE - Specific key slot number
+     * - 0xFF - Use current BIP32-derived key
+     *
+     * The method supports optional 2FA challenge-response for additional security.
+     * When 2FA is used, the challenge response must be exactly 20 bytes.
+     *
+     * Card exception codes:
+     * - 9C06 SW_UNAUTHORIZED
+     * - 9C10 SW_INCORRECT_P1
+     * - 6700 SW_WRONG_LENGTH
+     * - 9C14 SW_BIP32_UNINITIALIZED_SEED
+     * - 9C09 SW_INCORRECT_ALG
+     * - 9C0B SW_SIGNATURE_INVALID
+     *
+     * - Parameter keynbr: the key number to use for signing (0xFF for BIP32 key)
+     * - Parameter txhash: the 32-byte transaction hash to sign
+     * - Parameter chalresponse: optional 20-byte 2FA challenge response, or nil
+     * - Returns: the DER-encoded signature as [UInt8]
+     * - Throws: SatocardError if txhash is not 32 bytes or chalresponse is not 20 bytes
+     * - Throws: SatocardError if command APDU fails
+     *
+     */
+    public func cardSignTransactionHash(keynbr: UInt8, txhash: [UInt8], chalresponse: [UInt8]?) throws -> [UInt8] {
+        
+        guard txhash.count == 32 else {
+            throw SatocardError.wrongParameter(msg: "Wrong txhash length (should be 32)")
+        }
+        
+        let data: [UInt8]
+        if let chalresponse = chalresponse {
+            guard chalresponse.count == 20 else {
+                throw SatocardError.wrongParameter(msg: "Wrong challenge-response length (should be 20)")
+            }
+            // data = txhash(32b) + 2FA_flag(2b) + chalresponse(20b)
+            data = txhash + [0x80, 0x00] + chalresponse
+        } else {
+            // data = txhash(32b)
+            data = txhash
+        }
+        
+        let capdu = APDUCommand(cla: CLA.proprietary.rawValue,
+                               ins: SatocardINS.signTransactionHash.rawValue,
+                               p1: keynbr,
+                               p2: 0x00,
+                               data: data)
+        
+        print("SATOCHIPLIB: C-APDU cardSignTransactionHash: \(capdu.toHexString())")
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        print("SATOCHIPLIB: R-APDU cardSignTransactionHash: \(rapdu.toHexString())")
+        try rapdu.checkOK()
+        
+        return rapdu.data
+    }
+    
+    /**
+     * This function generates a tweaked private key, as used in Bitcoin taproot (TapTweak).
+     * See https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki
+     * See also https://bitcoinops.org/img/posts/taproot-workshop/taproot-workshop.pdf
+     *
+     * A private key must first be available, either from a keyslot or derived from a BIP32 seed using cardBip32GetExtendedkey().
+     * The chip then stores the tweaked key in a dedicated keyslot that is available next for schnorr signing.
+     * The function returns the public key corresponding to the private key.
+     *
+     * - Parameter keynbr: key number or 0xFF for the last derived Bip32 extended key
+     * - Parameter tweak: tweak data (32 bytes)
+     * - Parameter bypassFlag: if set to true, the tweak is bypassed and the private key is used as is (for example for Nostr signatures)
+     * - Returns: the tweaked public key as 65 bytes (uncompressed public key)
+     * - Throws: SatocardError if tweak is not 32 bytes or if command APDU fails
+     */
+    private func cardTaprootTweakPrivateKey(keynbr: Int, tweak: [UInt8], bypassFlag: Bool) throws -> [UInt8] {
+        
+        guard tweak.count == 32 else {
+            throw SatocardError.wrongParameter(msg: "Wrong tweak length (should be 32)")
+        }
+        
+        // data: [tweak_size(1b) | tweak_data(32b)]
+        var data: [UInt8] = [32]
+        data += tweak
+        
+        let p1 = UInt8(keynbr)
+        let p2: UInt8 = bypassFlag ? 0x01 : 0x00
+        
+        let capdu = APDUCommand(cla: CLA.proprietary.rawValue,
+                               ins: SatocardINS.taprootTweakPrivkey.rawValue,
+                               p1: p1,
+                               p2: p2,
+                               data: data)
+        
+        print("SATOCHIPLIB: C-APDU TaprootTweakPrivateKey: \(capdu.toHexString())")
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        print("SATOCHIPLIB: R-APDU TaprootTweakPrivateKey: \(rapdu.toHexString())")
+        try rapdu.checkOK()
+        
+        // parse & return response
+        let rapduBytes = rapdu.data
+        let pubkeySize = Int(rapduBytes[0]) * 256 + Int(rapduBytes[1])
+        let pubkeyBytes = Array(rapduBytes[2..<(2 + pubkeySize)])
+        
+        return pubkeyBytes
+    }
+    
+    /**
+     * Signs a hash using Schnorr algorithm as specified in BIP340.
+     * See https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki.
+     *
+     * This method creates a Schnorr signature for a hash using the last tweaked key.
+     * A private key must first be tweaked in a dedicated keyslot by calling cardTaprootTweakPrivateKey(keynbr: Int, tweak: [UInt8], bypassFlag: Bool).
+     *
+     * Card exception codes:
+     * - 9C06 SW_UNAUTHORIZED
+     * - 9C4A SW_FEATURE_DISABLED
+     * - 6700 SW_WRONG_LENGTH
+     * - 9C09 SW_INCORRECT_ALG
+     * - 9C0B SW_SIGNATURE_INVALID
+     *
+     * - Parameter txhash: the 32-byte hash to sign
+     * - Parameter chalresponse: optional 20-byte 2FA challenge response, or nil
+     * - Returns: the 64-byte signature
+     * - Throws: SatocardError if txhash is not 32 bytes or chalresponse is not 20 bytes or nil, or if command APDU fails
+     */
+    public func cardSignSchnorrHash(txhash: [UInt8], chalresponse: [UInt8]?) throws -> [UInt8] {
+        
+        guard txhash.count == 32 else {
+            throw SatocardError.wrongParameter(msg: "Wrong txhash length (should be 32)")
+        }
+        
+        let data: [UInt8]
+        if let chalresponse = chalresponse {
+            guard chalresponse.count == 20 else {
+                throw SatocardError.wrongParameter(msg: "Wrong challenge-response length (should be 20)")
+            }
+            // data = txhash(32b) + 2FA_flag(2b) + chalresponse(20b)
+            data = txhash + [0x80, 0x00] + chalresponse
+        } else {
+            // data = txhash(32b)
+            data = txhash
+        }
+        
+        let capdu = APDUCommand(cla: CLA.proprietary.rawValue,
+                               ins: SatocardINS.signSchnorrHash.rawValue,
+                               p1: 0x00,
+                               p2: 0x00,
+                               data: data)
+        
+        print("SATOCHIPLIB: C-APDU cardSignSchnorrHash: \(capdu.toHexString())")
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        print("SATOCHIPLIB: R-APDU cardSignSchnorrHash: \(rapdu.toHexString())")
+        
+        try rapdu.checkOK()
+        
+        // return signature as 64 bytes
+        return rapdu.data
+    }
+    
+    /**
+     * This function generates a MuSig2 nonce for the currently available private key stored in the Satochip.
+     * Generation is based on the BIP-0327 specification: https://github.com/bitcoin/bips/blob/master/bip-0327.mediawiki.
+     *
+     * A private key must first be available, either from a keyslot or
+     * derived from a BIP32 seed using cardBip32GetExtendedkey().
+     *
+     * The function returns the corresponding public nonce (pubnonce) and the encrypted secret nonce blob (secnonce).
+     * The encrypted secnonce is returned by the chip for external storage and will be required later during the signing phase.
+     *
+     * Card exception codes:
+     * - 9C06 SW_UNAUTHORIZED
+     * - 9C4A SW_FEATURE_DISABLED
+     * - 9C44 SW_BIP327_WRONG_SECNONCE
+     * - 9C10 SW_INCORRECT_P1
+     * - 9C14 SW_BIP32_UNINITIALIZED_SEED
+     * - 9C09 SW_INCORRECT_ALG
+     * - 6700  SW_WRONG_LENGTH
+     * - 9C0F SW_INVALID_PARAMETER
+     * - 9C46 SW_BIP327_COUNTER_OVERFLOW
+     *
+     * - Parameter keynbr: the key to use (0xFF for bip32 extended key)
+     * - Parameter aggpk: the x-only aggregate public key
+     * - Parameter msg: the message (should be 127-bytes or less)
+     * - Parameter extra: auxiliary input (should be 127-bytes or less)
+     * - Returns: array containing [pubnonce, encrypted_sec_nonce]
+     * - Throws: SatocardError for parameter validation or if command APDU fails
+     */
+    private func cardMusig2GenerateNonce(keynbr: Int, aggpk: [UInt8], msg: [UInt8], extra: [UInt8]) throws -> ([UInt8], [UInt8]) {
+        
+        // check inputs
+        guard aggpk.count == 32 else {
+            throw SatocardError.wrongParameter(msg: "Wrong aggpk length (should be 32)")
+        }
+        guard msg.count <= 127 else {
+            throw SatocardError.wrongParameter(msg: "Wrong msg length (should max 127)")
+        }
+        guard extra.count <= 127 else {
+            throw SatocardError.wrongParameter(msg: "Wrong extra length (should max 127)")
+        }
+        guard (aggpk.count + msg.count + extra.count) <= 250 else {
+            throw SatocardError.wrongParameter(msg: "Wrong inputs total length (should max 250)")
+        }
+        
+        // OP_INIT: recover pubnonce
+        // data: [aggpk_size(1b) | aggpk | msg_size(1b) | msg | extra_size(1b) | extra_bytes]
+        var data: [UInt8] = [UInt8(aggpk.count)]
+        data += aggpk
+        data += [UInt8(msg.count)]
+        data += msg
+        data += [UInt8(extra.count)]
+        data += extra
+        
+        let p1 = UInt8(keynbr)
+        var p2: UInt8 = 0x01 // OP_INIT
+        
+        var capdu = APDUCommand(cla: CLA.proprietary.rawValue,
+                               ins: SatocardINS.musig2GenerateNonce.rawValue,
+                               p1: p1,
+                               p2: p2,
+                               data: data)
+        
+        print("SATOCHIPLIB: C-APDU Musig2GenerateNonce (OP_INIT): \(capdu.toHexString())")
+        var rapdu = try self.cardTransmit(plainApdu: capdu)
+        print("SATOCHIPLIB: R-APDU Musig2GenerateNonce (OP_INIT): \(rapdu.toHexString())")
+        
+        try rapdu.checkOK()
+        
+        // parse response
+        let pubnonce = rapdu.data
+        
+        // OP_FINALIZE: recover encrypted_secnonce
+        p2 = 0x03 // OP_FINALIZE
+        capdu = APDUCommand(cla: CLA.proprietary.rawValue,
+                           ins: SatocardINS.musig2GenerateNonce.rawValue,
+                           p1: p1,
+                           p2: p2,
+                           data: [])
+        
+        print("SATOCHIPLIB: C-APDU Musig2GenerateNonce (OP_FINALIZE): \(capdu.toHexString())")
+        rapdu = try self.cardTransmit(plainApdu: capdu)
+        print("SATOCHIPLIB: R-APDU Musig2GenerateNonce (OP_FINALIZE): \(rapdu.toHexString())")
+        
+        try rapdu.checkOK()
+        
+        // parse response
+        let encryptedSecnonce = rapdu.data
+        
+        // return pubnonce, secnonce
+        return (pubnonce, encryptedSecnonce)
+    }
+    
+    /**
+     * This function generates a MuSig2 signature for the specified private key stored in the Satochip.
+     * The specified private key comes either from a keyslot or derived from a BIP32 seed using cardBip32GetExtendedkey().
+     * The signature is computed based on secnonce and intermediate values b, ea, R_evenness and ggac.
+     * Signature is based on the BIP-0327 specification: https://github.com/bitcoin/bips/blob/master/bip-0327.mediawiki.
+     *
+     * The function returns the partial psig signature for corresponding key and given secnonce & session context.
+     *
+     * Card exception codes:
+     * - 9C06 SW_UNAUTHORIZED
+     * - 9C4A SW_FEATURE_DISABLED
+     * - 6700  SW_WRONG_LENGTH
+     * - 9C44 SW_BIP327_WRONG_SECNONCE
+     * - 9C47 SW_BIP327_INVALID_ID
+     * - 9C10 SW_INCORRECT_P1
+     * - 9C14 SW_BIP32_UNINITIALIZED_SEED
+     * - 9C09 SW_INCORRECT_ALG
+     * - 9C45 SW_BIP327_PUBKEY_MISMATCH
+     *
+     * - Parameter keynbr: the key to use (0xFF for bip32 extended key)
+     * - Parameter secnonce: the encrypted secnonce previously computed with cardMusig2GenerateNonce()
+     * - Parameter b: from BIP327 Session Context where b=int(hashMuSig/noncecoef(aggnonce || xbytes(Q) || m)) mod n
+     * - Parameter ea: the result of e multiplied by a in BIP327, where e=int(hashBIP0340/challenge(xbytes(R) || xbytes(Q) || m)) mod n and a=GetSessionKeyAggCoeff(session_ctx, P)
+     * - Parameter rHasEvenY: is True is has_even_y(R) for R as defined in BIP327, else False
+     * - Parameter ggaccIs1: is True if ggacc is equal to 1, else False where ggacc=g*gacc
+     * - Returns: psig, the partial signature as 32-byte array
+     * - Throws: SatocardError for parameter validation or if command APDU fails
+     *
+     * data (init): [encrypted secnonce(112b) | iv(16b) | mac(16b)]
+     * data (finalize): [b(32b) | e*a(32b) | has_even_y(R) (1b) | g*gacc (1b)]
+     */
+    private func cardMusig2Sign(keynbr: Int, secnonce: [UInt8], b: [UInt8], ea: [UInt8], rHasEvenY: Bool, ggaccIs1: Bool) throws -> [UInt8] {
+        
+        // check inputs
+        guard secnonce.count == 144 else {
+            throw SatocardError.wrongParameter(msg: "Wrong secnonce length (should be 144)")
+        }
+        guard b.count == 32 else {
+            throw SatocardError.wrongParameter(msg: "Wrong b length (should be 32)")
+        }
+        guard ea.count == 32 else {
+            throw SatocardError.wrongParameter(msg: "Wrong ea length (should be 32)")
+        }
+        
+        // OP_INIT: import secnonce
+        // data: [encrypted secnonce(112b) | iv(16b) | mac(16b)]
+        var data = secnonce
+        let ins = SatocardINS.musig2SignHash.rawValue
+        let p1 = UInt8(keynbr)
+        var p2: UInt8 = 0x01 // OP_INIT
+        
+        var capdu = APDUCommand(cla: CLA.proprietary.rawValue,
+                               ins: ins,
+                               p1: p1,
+                               p2: p2,
+                               data: data)
+        
+        print("SATOCHIPLIB: C-APDU cardMusig2SignHash (OP_INIT): \(capdu.toHexString())")
+        var rapdu = try self.cardTransmit(plainApdu: capdu)
+        print("SATOCHIPLIB: R-APDU cardMusig2SignHash (OP_INIT): \(rapdu.toHexString())")
+        
+        try rapdu.checkOK()
+        
+        // OP_FINALIZE: recover encrypted_secnonce
+        // data: [ b(32b)| ea(32b) | R_evenness(1b) | ggacc(1b) ]
+        data = b + ea
+        data += [rHasEvenY ? 0x00 : 0x01]
+        data += [ggaccIs1 ? 0x01 : 0x00]
+        
+        p2 = 0x03 // OP_FINALIZE
+        capdu = APDUCommand(cla: CLA.proprietary.rawValue,
+                           ins: ins,
+                           p1: p1,
+                           p2: p2,
+                           data: data)
+        
+        print("SATOCHIPLIB: C-APDU cardMusig2SignHash (OP_FINALIZE): \(capdu.toHexString())")
+        rapdu = try self.cardTransmit(plainApdu: capdu)
+        print("SATOCHIPLIB: R-APDU cardMusig2SignHash (OP_FINALIZE): \(rapdu.toHexString())")
+        
+        try rapdu.checkOK()
+        
+        // parse response
+        let psig = rapdu.data
+        
+        // return partial sig
+        return psig
+    }
     
     //****************************************
     //*               MARK: SATODIME

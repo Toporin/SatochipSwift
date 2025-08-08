@@ -20,8 +20,10 @@ public struct Version {
     // v0.10: sign tx hash
     // v0.11: support for (mandatory) secure channel
     // v0.12: card label & support for encrypted seed import from Seedkeeper
+    // v0.14: Schnorr signature support
+    // v0.15: Musig2 signature support
     public static let SATOCHIP_PROTOCOL_MAJOR_VERSION = 0
-    public static let SATOCHIP_PROTOCOL_MINOR_VERSION = 0
+    public static let SATOCHIP_PROTOCOL_MINOR_VERSION = 15
     public static let SATOCHIP_PROTOCOL_VERSION = (SATOCHIP_PROTOCOL_MAJOR_VERSION<<8)+SATOCHIP_PROTOCOL_MINOR_VERSION
 
     // Seedkeeper supported version tuple
@@ -46,8 +48,9 @@ public struct Version {
     // v0.1.0 initial version (satodime only)
     // v0.2.0 add Seedkeeper support
     // v0.3.0 add Satocash support (WIP)
+    // v0.3.2 add ECDSA, Schnorr & Musig2 signatures support for Satochip
     public static let SATOCHIPSWIFT_MAJOR_VERSION = 0
     public static let SATOCHIPSWIFT_MINOR_VERSION = 3
-    public static let SATOCHIPSWIFT_REVISION = 0
+    public static let SATOCHIPSWIFT_REVISION = 2
     public static let SATOCHIPSWIFT_VERSION = String(SATOCHIPSWIFT_MAJOR_VERSION) + "." + String(SATOCHIPSWIFT_MINOR_VERSION) + "." + String(SATOCHIPSWIFT_REVISION)
 }
