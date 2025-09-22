@@ -57,12 +57,16 @@ public enum StatusWord: UInt16, Error {
     case secureImportNoTrustePubkey = 0x9C35 // No Trusted Pubkey when importing Secret through Secure import
     
     // Satodime
-    
+    case incorrectUnlockCounter = 0x9C50
+    case incorrectUnlockCode = 0x9C51
+    case incorrectKeyslotState = 0x9C52
+    case incorrectProtocolMedia = 0x9C53
+    case unknownProtocolMedia = 0x9C54
+
     // seedkeeeper
     case lockError = 0x9C30
     case exportNotAllowed = 0x9C31
     case usageNotAllowed = 0x9C36
     case wrongSecretType = 0x9C38
-    
 }
 

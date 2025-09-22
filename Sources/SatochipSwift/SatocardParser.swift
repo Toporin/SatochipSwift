@@ -442,7 +442,7 @@ public class SatocardParser {
     
     public func convertBytesToStringPem(certBytes: [UInt8]) -> String {
         //logger.info("In convertBytesToStringPem")
-        let certBase64Raw: String = certBytes.toBase64()
+        let certBase64Raw: String = certBytes.toBase64() ?? ""
         //logger.info("certBase64Raw: \(certBase64Raw)")
         
         // divide in fixed size chunk

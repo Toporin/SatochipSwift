@@ -1538,7 +1538,7 @@ public class SatocardCommandSet {
         }
         
         let labelBytes: [UInt8] = label.bytes
-        let entropyBytes: [UInt8] = entropy.bytes
+        let entropyBytes: [UInt8] = entropy
         let saveEntropyByte = saveEntropy ? UInt8(0x01) : UInt8(0x00)
         let data: [UInt8] = [stype.rawValue, subtype, saveEntropyByte] +
                             [UInt8(labelBytes.count)] + labelBytes + [UInt8(entropyBytes.count)] + entropyBytes

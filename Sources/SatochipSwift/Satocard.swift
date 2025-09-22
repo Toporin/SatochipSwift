@@ -105,7 +105,6 @@ struct SatocardCst {
     
     // satodime
     static let sizeUnlockCounter = 4
-    static let sizeUnlockSecret = 20
     static let sizeUnlockCode = 20
     static let sizeSlip44 = 4
     static let sizeContract = 2+32

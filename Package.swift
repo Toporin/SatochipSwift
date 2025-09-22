@@ -18,12 +18,11 @@ let package = Package(
         // Dependencies declare other packages that this package depends on.
         // .package(url: /* package url */, from: "1.0.0"),
         .package(url: "https://github.com/Toporin/SwiftTLS.git", branch:"master"),
-        .package(url: "https://github.com/GigaBitcoin/secp256k1.swift.git", from:"0.10.0"),
-        //.package(url: "https://github.com/krzyzanowskim/CryptoSwift.git", .upToNextMinor(from:"1.0.0")),
-        .package(
-            url: "https://github.com/anquii/CryptoSwiftWrapper.git",
-            .exact("1.4.3")
-        ),
+        .package(url: "https://github.com/status-im/secp256k1.swift.git", .branch("master")),
+        //.package(url: "https://github.com/GigaBitcoin/secp256k1.swift.git", from:"0.10.0"),
+        //.package(name: "swift-secp256k1", url: "https://github.com/21-DOT-DEV/swift-secp256k1", from: "0.21.1"),
+        .package(url: "https://github.com/krzyzanowskim/CryptoSwift.git", .upToNextMinor(from:"1.0.0")),
+        //.package(url: "https://github.com/anquii/CryptoSwiftWrapper.git",.exact("1.4.3")),
         .package(url: "https://github.com/marmelroy/Zip.git", .upToNextMinor(from:"2.1.0")),
         .package(url: "https://github.com/Electric-Coin-Company/MnemonicSwift.git", .upToNextMajor(from: "2.2.4")),
         .package(url: "https://github.com/attaswift/BigInt.git", from: "5.0.0")
@@ -35,13 +34,14 @@ let package = Package(
         .target(
             name: "SatochipSwift",
             dependencies: [
-                //"CryptoSwift",
-                "CryptoSwiftWrapper",
+                "CryptoSwift",
+                //"CryptoSwiftWrapper",
                 "Zip",
                 "SwiftTLS",
                 "MnemonicSwift",
                 "BigInt",
                 .product(name: "secp256k1", package: "secp256k1.swift"),
+                //.product(name: "P256K", package: "swift-secp256k1"),
             ]),
         .testTarget(
             name: "SatochipSwiftTests",
