@@ -39,8 +39,9 @@ public struct Version {
     // SatochipSwift version
     // v0.1.0 initial version (satodime only)
     // v0.2.0 add Seedkeeper support
+    // v0.2.1 fix secp256k1 version dependency 
     public static let SATOCHIPSWIFT_MAJOR_VERSION = 0
     public static let SATOCHIPSWIFT_MINOR_VERSION = 2
-    public static let SATOCHIPSWIFT_REVISION = 0
+    public static let SATOCHIPSWIFT_REVISION = 1
     public static let SATOCHIPSWIFT_VERSION = String(SATOCHIPSWIFT_MAJOR_VERSION) + "." + String(SATOCHIPSWIFT_MINOR_VERSION) + "." + String(SATOCHIPSWIFT_REVISION)
 }
