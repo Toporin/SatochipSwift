@@ -17,7 +17,7 @@ let package = Package(
     dependencies: [
         // Dependencies declare other packages that this package depends on.
         // .package(url: /* package url */, from: "1.0.0"),
-        .package(url: "https://github.com/Toporin/SwiftTLS.git", branch:"master"),
+        .package(url: "https://github.com/Toporin/SwiftTLS.git", .upToNextMinor(from: "0.1.0")),
         .package(url: "https://github.com/GigaBitcoin/secp256k1.swift.git", .upToNextMinor(from: "0.10.0")),
         .package(url: "https://github.com/krzyzanowskim/CryptoSwift.git", .upToNextMinor(from:"1.0.0")),
         .package(url: "https://github.com/marmelroy/Zip.git", .upToNextMinor(from:"2.1.0")),
