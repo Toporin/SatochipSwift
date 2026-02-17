@@ -12,7 +12,9 @@ public struct SatodimeStatus {
     public var maxNumKeys: Int = 0
     public var satodimeKeysState: [UInt8] = [UInt8]()
     public var unlockCounter: UInt32 = 0
-    public var unlockSecret: [UInt8] = [UInt8](repeating: 0x00, count: SatocardCst.sizeUnlockSecret)
+    public var unlockCode: [UInt8] = [UInt8](repeating: 0x00, count: SatocardCst.sizeUnlockCode)
+    public var isFixedCvc: Bool = false
+    public var isCoa: Bool = false
     
     public init() {}
     
@@ -47,6 +49,26 @@ public struct SatodimeStatus {
                 throw SatodimeStatusError.wrongDataLength(length: dataRemain, expected: self.maxNumKeys)
             }
             self.satodimeKeysState = Array(data[offset ..< (offset+maxNumKeys)])
+            offset+=maxNumKeys
+            dataRemain-=maxNumKeys
+            // isFixedCvc
+            if dataRemain>=1 {
+                let fixedCvcByte = data[offset]
+                if fixedCvcByte == 0x01 {
+                    isFixedCvc = true
+                }
+            }
+            offset+=1
+            dataRemain-=1
+            // isCoa
+            if dataRemain>=1 {
+                let coaByte = data[offset]
+                if coaByte == 0x01 {
+                    isCoa = true
+                }
+            }
+            offset+=1
+            dataRemain-=1
         }
         else if sw==StatusWord.setupNotDone.rawValue {
             setupDone = false
@@ -70,10 +92,10 @@ public struct SatodimeStatus {
             unlockCounter = data[offset ..< (offset+SatocardCst.sizeUnlockCounter)].toUInt32
             offset+=SatocardCst.sizeUnlockCounter
             dataRemain-=SatocardCst.sizeUnlockCounter
-            if dataRemain<SatocardCst.sizeUnlockSecret {
-                throw SatodimeStatusError.wrongDataLength(length: dataRemain, expected: SatocardCst.sizeUnlockSecret)
+            if dataRemain<SatocardCst.sizeUnlockCode {
+                throw SatodimeStatusError.wrongDataLength(length: dataRemain, expected: SatocardCst.sizeUnlockCode)
             }
-            unlockSecret = Array(data[offset ..< (offset+SatocardCst.sizeUnlockSecret)])
+            unlockCode = Array(data[offset ..< (offset+SatocardCst.sizeUnlockCode)])
             isOwner = true;
         }
         else if sw==StatusWord.setupNotDone.rawValue {
@@ -88,8 +110,8 @@ public struct SatodimeStatus {
         }
     }
     
-    public mutating func setUnlockSecret(unlockSecret: [UInt8]) {
-        self.unlockSecret = unlockSecret
+    public mutating func setUnlockCode(unlockCode: [UInt8]) {
+        self.unlockCode = unlockCode
         self.isOwner = true
     }
     
@@ -105,7 +127,7 @@ public struct SatodimeStatus {
         //logger.info("In computeUnlockCode counterBytes hex: \(unlockCounterBytes.bytesToHex)")
         let dataToMac: [UInt8] = challenge + unlockCounterBytes
         //logger.info("dataToMac: \(dataToMac.bytesToHex)")
-        let macBytes: [UInt8] = Crypto.shared.hmacSHA1(data: dataToMac, key: unlockSecret)
+        let macBytes: [UInt8] = Crypto.shared.hmacSHA1(data: dataToMac, key: unlockCode)
         
         let response = unlockCounterBytes + macBytes
         return response
@@ -115,7 +137,10 @@ public struct SatodimeStatus {
         let status_info: String = "setupDone: \(setupDone) \n" +
                                   "maxNumKeys: \(maxNumKeys) \n" +
                                   "satodimeKeysState: \(satodimeKeysState)) \n" +
-                                  "unlockCounter: \(unlockCounter)"
+                                  "unlockCounter: \(unlockCounter) \n" +
+                                  "isFixedCvc: \(isFixedCvc) \n" +
+                                  "isCoa: \(isCoa)"
+        
         return status_info
     }
 }

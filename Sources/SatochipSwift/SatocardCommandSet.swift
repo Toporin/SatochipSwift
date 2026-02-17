@@ -17,6 +17,16 @@ public enum SatocardError: Error {
     case unsupportedLegacyOptionDuringBip32Derivation
     case wrongPubkeyLength(length: Int, expected: Int)
     case wrongXpubLength(length: Int, expected: Int)
+    
+    // Satocash error
+    case memoryError(sw1: UInt8 = 0x9C, sw2: UInt8 = 0x01, message: String = "Not enough memory available")
+    case wrongLengthError(sw1: UInt8 = 0x67, sw2: UInt8 = 0x00, message: String = "Wrong length error")
+    case invalidParameterError(sw1: UInt8 = 0x9C, sw2: UInt8 = 0x0F, message: String = "Data provided to card is invalid")
+    case incorrectP1Error(sw1: UInt8 = 0x9C, sw2: UInt8 = 0x10, message: String = "P1 parameter provided to card is invalid")
+    case incorrectP2Error(sw1: UInt8 = 0x9C, sw2: UInt8 = 0x11, message: String = "P2 parameter provided to card is invalid")
+    case operationNotAllowedError(sw1: UInt8 = 0x9C, sw2: UInt8 = 0x03, message: String = "Operation is not allowed by the card policy")
+    case incorrectInitializationError(sw1: UInt8 = 0x9C, sw2: UInt8 = 0x13, message: String = "Incorrect initialization of operations")
+    case objectAlreadyPresentError(sw1: UInt8 = 0x9C, sw2: UInt8 = 0x60, message: String = "Imported object is already present")
 }
 
 public enum SatodimeApiError: Error {
@@ -28,6 +38,11 @@ public enum SatodimeApiError: Error {
 
 public enum SeedkeeperApiError: Error {
     case wrongSecretSize(size: Int)
+    
+}
+
+public enum SatocashApiError: Error {
+    case wrongExportKeysetsSize(length: Int, expected: Int)
     
 }
 
@@ -64,6 +79,7 @@ public enum CardType: String {
     case satochip = "satochip"
     case satodime = "satodime"
     case seedkeeper = "seedkeeper"
+    case satocash = "satocash"
     case unknown = "unknown"
     case nocard = "nocard"
     case anycard = "anycard"
@@ -76,6 +92,8 @@ public enum CardType: String {
             return SatocardIdentifier.satodimeAID.bytesValue
         case .seedkeeper:
             return SatocardIdentifier.seedkeeperAID.bytesValue
+        case .satocash:
+            return SatocardIdentifier.satocashAID.bytesValue
         case .nocard:
             return [UInt8]()
         case .unknown:
@@ -93,6 +111,7 @@ public class SatocardCommandSet {
     let secureChannel: SecureChannel
     let satochipParser: SatocardParser
     public var cardStatus: CardStatus?
+    public var satocashStatus: SatocashStatus?
     public var satodimeStatus: SatodimeStatus
     public var cardType: CardType
     public var isSecureChannelOpen: Bool { return secureChannel.open }
@@ -151,7 +170,7 @@ public class SatocardCommandSet {
         }
         
         if cardType == CardType.anycard {
-            for card in [CardType.satodime, CardType.seedkeeper, CardType.satochip] {
+            for card in [CardType.satodime, CardType.seedkeeper, CardType.satochip, CardType.satocash] {
                 do {
                     var (rapdu, foundCardType) = try selectApplet(cardType: card)
                     if rapdu.sw == 0x9000 && rapdu.data.count>=7 {
@@ -175,6 +194,7 @@ public class SatocardCommandSet {
             if rapdu.data.count>=7 {
                 // in new card version, the card status is already provided as response to select
                 cardStatus = CardStatus(rapdu: rapdu)
+                // todo: satocash status for satocash card
             }
             self.cardType = cardType
         } else {
@@ -325,32 +345,33 @@ public class SatocardCommandSet {
         let p1: UInt8 = 0x00
         let p2: UInt8 = 0x01 // get
         
-        let command = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: [])
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: [])
         
-        let response = try self.cardTransmit(plainApdu: command)
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
         
         var label: String
         
-        if response.sw1 == 0x90 && response.sw2 == 0x00 {
-            let labelSize = response.data[0] //response[0]
-            do {
-                if let labelData = String(data: Data(response.data[1...]), encoding: .utf8) {
-                    label = labelData
-                } else {
-                    throw NSError(domain: "UnicodeDecodeError", code: 0, userInfo: nil)
-                }
-            } catch {
-                NSLog("UnicodeDecodeError while decoding card label !")
-                label = String(bytes: response.data[1...], encoding: .utf8) ?? "\(response.data[1...])"
-            }
-        } else if response.sw1 == 0x6d && response.sw2 == 0x00 {
+        if rapdu.sw1 == 0x90 && rapdu.sw2 == 0x00 {
+            let labelSize = rapdu.data[0] //response[0]
+            label = String(bytes: rapdu.data[1...], encoding: .utf8) ?? "\(rapdu.data[1...])"
+//            do {
+//                if let labelData = String(data: Data(rapdu.data[1...]), encoding: .utf8) {
+//                    label = labelData
+//                } else {
+//                    throw NSError(domain: "UnicodeDecodeError", code: 0, userInfo: nil)
+//                }
+//            } catch {
+//                NSLog("UnicodeDecodeError while decoding card label !")
+//                label = String(bytes: rapdu.data[1...], encoding: .utf8) ?? "\(rapdu.data[1...])"
+//            }
+        } else if rapdu.sw1 == 0x6d && rapdu.sw2 == 0x00 {
             label = "(unsupported)"
         } else {
-            NSLog("Error while recovering card label: \(response.sw1) \(response.sw2)")
+            NSLog("Error while recovering card label: \(rapdu.sw1) \(rapdu.sw2)")
             label = "(unknown)"
         }
         
-        // return (response, sw1, sw2, label)
+        // return (rapdu, sw1, sw2, label)
         return label
     }
     
@@ -368,11 +389,11 @@ public class SatocardCommandSet {
         var data: [UInt8] = [UInt8(labelData.count)]
         data += [UInt8](labelData)
         
-        let command = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
         
         do {
-            let response = try self.cardTransmit(plainApdu: command)
-            return response.sw1 == 0x90 && response.sw2 == 0x00
+            let rapdu = try self.cardTransmit(plainApdu: capdu)
+            return rapdu.sw1 == 0x90 && rapdu.sw2 == 0x00
         } catch {
             return false
         }
@@ -404,10 +425,10 @@ public class SatocardCommandSet {
                 
         let data: [UInt8] = [UInt8(oldPin.count)] + oldPin + [UInt8(newPin.count)] + newPin
         
-        let command = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
-        let response = try self.cardTransmit(plainApdu: command)
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
                 
-        return response
+        return rapdu
     }
 
     
@@ -781,7 +802,347 @@ public class SatocardCommandSet {
     //*               MARK: SATOCHIP
     //****************************************
     
-    // Todo!
+    /**
+     * Signs a transaction hash using the specified key with optional 2FA.
+     *
+     * This method creates a digital signature for a transaction hash using either
+     * a specific key slot or the BIP32-derived key.
+     *
+     * Key number values:
+     * - 0x00-0xFE - Specific key slot number
+     * - 0xFF - Use current BIP32-derived key
+     *
+     * The method supports optional 2FA challenge-response for additional security.
+     * When 2FA is used, the challenge response must be exactly 20 bytes.
+     *
+     * Card exception codes:
+     * - 9C06 SW_UNAUTHORIZED
+     * - 9C10 SW_INCORRECT_P1
+     * - 6700 SW_WRONG_LENGTH
+     * - 9C14 SW_BIP32_UNINITIALIZED_SEED
+     * - 9C09 SW_INCORRECT_ALG
+     * - 9C0B SW_SIGNATURE_INVALID
+     *
+     * - Parameter keynbr: the key number to use for signing (0xFF for BIP32 key)
+     * - Parameter txhash: the 32-byte transaction hash to sign
+     * - Parameter chalresponse: optional 20-byte 2FA challenge response, or nil
+     * - Returns: the DER-encoded signature as [UInt8]
+     * - Throws: SatocardError if txhash is not 32 bytes or chalresponse is not 20 bytes
+     * - Throws: SatocardError if command APDU fails
+     *
+     */
+    public func cardSignTransactionHash(keynbr: UInt8, txhash: [UInt8], chalresponse: [UInt8]?) throws -> [UInt8] {
+        
+        guard txhash.count == 32 else {
+            throw SatocardError.wrongParameter(msg: "Wrong txhash length (should be 32)")
+        }
+        
+        let data: [UInt8]
+        if let chalresponse = chalresponse {
+            guard chalresponse.count == 20 else {
+                throw SatocardError.wrongParameter(msg: "Wrong challenge-response length (should be 20)")
+            }
+            // data = txhash(32b) + 2FA_flag(2b) + chalresponse(20b)
+            data = txhash + [0x80, 0x00] + chalresponse
+        } else {
+            // data = txhash(32b)
+            data = txhash
+        }
+        
+        let capdu = APDUCommand(cla: CLA.proprietary.rawValue,
+                               ins: SatocardINS.signTransactionHash.rawValue,
+                               p1: keynbr,
+                               p2: 0x00,
+                               data: data)
+        
+        print("SATOCHIPLIB: C-APDU cardSignTransactionHash: \(capdu.toHexString())")
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        print("SATOCHIPLIB: R-APDU cardSignTransactionHash: \(rapdu.toHexString())")
+        try rapdu.checkOK()
+        
+        return rapdu.data
+    }
+    
+    /**
+     * This function generates a tweaked private key, as used in Bitcoin taproot (TapTweak).
+     * See https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki
+     * See also https://bitcoinops.org/img/posts/taproot-workshop/taproot-workshop.pdf
+     *
+     * A private key must first be available, either from a keyslot or derived from a BIP32 seed using cardBip32GetExtendedkey().
+     * The chip then stores the tweaked key in a dedicated keyslot that is available next for schnorr signing.
+     * The function returns the public key corresponding to the private key.
+     *
+     * - Parameter keynbr: key number or 0xFF for the last derived Bip32 extended key
+     * - Parameter tweak: tweak data (32 bytes)
+     * - Parameter bypassFlag: if set to true, the tweak is bypassed and the private key is used as is (for example for Nostr signatures)
+     * - Returns: the tweaked public key as 65 bytes (uncompressed public key)
+     * - Throws: SatocardError if tweak is not 32 bytes or if command APDU fails
+     */
+    private func cardTaprootTweakPrivateKey(keynbr: Int, tweak: [UInt8], bypassFlag: Bool) throws -> [UInt8] {
+        
+        guard tweak.count == 32 else {
+            throw SatocardError.wrongParameter(msg: "Wrong tweak length (should be 32)")
+        }
+        
+        // data: [tweak_size(1b) | tweak_data(32b)]
+        var data: [UInt8] = [32]
+        data += tweak
+        
+        let p1 = UInt8(keynbr)
+        let p2: UInt8 = bypassFlag ? 0x01 : 0x00
+        
+        let capdu = APDUCommand(cla: CLA.proprietary.rawValue,
+                               ins: SatocardINS.taprootTweakPrivkey.rawValue,
+                               p1: p1,
+                               p2: p2,
+                               data: data)
+        
+        print("SATOCHIPLIB: C-APDU TaprootTweakPrivateKey: \(capdu.toHexString())")
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        print("SATOCHIPLIB: R-APDU TaprootTweakPrivateKey: \(rapdu.toHexString())")
+        try rapdu.checkOK()
+        
+        // parse & return response
+        let rapduBytes = rapdu.data
+        let pubkeySize = Int(rapduBytes[0]) * 256 + Int(rapduBytes[1])
+        let pubkeyBytes = Array(rapduBytes[2..<(2 + pubkeySize)])
+        
+        return pubkeyBytes
+    }
+    
+    /**
+     * Signs a hash using Schnorr algorithm as specified in BIP340.
+     * See https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki.
+     *
+     * This method creates a Schnorr signature for a hash using the last tweaked key.
+     * A private key must first be tweaked in a dedicated keyslot by calling cardTaprootTweakPrivateKey(keynbr: Int, tweak: [UInt8], bypassFlag: Bool).
+     *
+     * Card exception codes:
+     * - 9C06 SW_UNAUTHORIZED
+     * - 9C4A SW_FEATURE_DISABLED
+     * - 6700 SW_WRONG_LENGTH
+     * - 9C09 SW_INCORRECT_ALG
+     * - 9C0B SW_SIGNATURE_INVALID
+     *
+     * - Parameter txhash: the 32-byte hash to sign
+     * - Parameter chalresponse: optional 20-byte 2FA challenge response, or nil
+     * - Returns: the 64-byte signature
+     * - Throws: SatocardError if txhash is not 32 bytes or chalresponse is not 20 bytes or nil, or if command APDU fails
+     */
+    public func cardSignSchnorrHash(txhash: [UInt8], chalresponse: [UInt8]?) throws -> [UInt8] {
+        
+        guard txhash.count == 32 else {
+            throw SatocardError.wrongParameter(msg: "Wrong txhash length (should be 32)")
+        }
+        
+        let data: [UInt8]
+        if let chalresponse = chalresponse {
+            guard chalresponse.count == 20 else {
+                throw SatocardError.wrongParameter(msg: "Wrong challenge-response length (should be 20)")
+            }
+            // data = txhash(32b) + 2FA_flag(2b) + chalresponse(20b)
+            data = txhash + [0x80, 0x00] + chalresponse
+        } else {
+            // data = txhash(32b)
+            data = txhash
+        }
+        
+        let capdu = APDUCommand(cla: CLA.proprietary.rawValue,
+                               ins: SatocardINS.signSchnorrHash.rawValue,
+                               p1: 0x00,
+                               p2: 0x00,
+                               data: data)
+        
+        print("SATOCHIPLIB: C-APDU cardSignSchnorrHash: \(capdu.toHexString())")
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        print("SATOCHIPLIB: R-APDU cardSignSchnorrHash: \(rapdu.toHexString())")
+        
+        try rapdu.checkOK()
+        
+        // return signature as 64 bytes
+        return rapdu.data
+    }
+    
+    /**
+     * This function generates a MuSig2 nonce for the currently available private key stored in the Satochip.
+     * Generation is based on the BIP-0327 specification: https://github.com/bitcoin/bips/blob/master/bip-0327.mediawiki.
+     *
+     * A private key must first be available, either from a keyslot or
+     * derived from a BIP32 seed using cardBip32GetExtendedkey().
+     *
+     * The function returns the corresponding public nonce (pubnonce) and the encrypted secret nonce blob (secnonce).
+     * The encrypted secnonce is returned by the chip for external storage and will be required later during the signing phase.
+     *
+     * Card exception codes:
+     * - 9C06 SW_UNAUTHORIZED
+     * - 9C4A SW_FEATURE_DISABLED
+     * - 9C44 SW_BIP327_WRONG_SECNONCE
+     * - 9C10 SW_INCORRECT_P1
+     * - 9C14 SW_BIP32_UNINITIALIZED_SEED
+     * - 9C09 SW_INCORRECT_ALG
+     * - 6700  SW_WRONG_LENGTH
+     * - 9C0F SW_INVALID_PARAMETER
+     * - 9C46 SW_BIP327_COUNTER_OVERFLOW
+     *
+     * - Parameter keynbr: the key to use (0xFF for bip32 extended key)
+     * - Parameter aggpk: the x-only aggregate public key
+     * - Parameter msg: the message (should be 127-bytes or less)
+     * - Parameter extra: auxiliary input (should be 127-bytes or less)
+     * - Returns: array containing [pubnonce, encrypted_sec_nonce]
+     * - Throws: SatocardError for parameter validation or if command APDU fails
+     */
+    private func cardMusig2GenerateNonce(keynbr: Int, aggpk: [UInt8], msg: [UInt8], extra: [UInt8]) throws -> ([UInt8], [UInt8]) {
+        
+        // check inputs
+        guard aggpk.count == 32 else {
+            throw SatocardError.wrongParameter(msg: "Wrong aggpk length (should be 32)")
+        }
+        guard msg.count <= 127 else {
+            throw SatocardError.wrongParameter(msg: "Wrong msg length (should max 127)")
+        }
+        guard extra.count <= 127 else {
+            throw SatocardError.wrongParameter(msg: "Wrong extra length (should max 127)")
+        }
+        guard (aggpk.count + msg.count + extra.count) <= 250 else {
+            throw SatocardError.wrongParameter(msg: "Wrong inputs total length (should max 250)")
+        }
+        
+        // OP_INIT: recover pubnonce
+        // data: [aggpk_size(1b) | aggpk | msg_size(1b) | msg | extra_size(1b) | extra_bytes]
+        var data: [UInt8] = [UInt8(aggpk.count)]
+        data += aggpk
+        data += [UInt8(msg.count)]
+        data += msg
+        data += [UInt8(extra.count)]
+        data += extra
+        
+        let p1 = UInt8(keynbr)
+        var p2: UInt8 = 0x01 // OP_INIT
+        
+        var capdu = APDUCommand(cla: CLA.proprietary.rawValue,
+                               ins: SatocardINS.musig2GenerateNonce.rawValue,
+                               p1: p1,
+                               p2: p2,
+                               data: data)
+        
+        print("SATOCHIPLIB: C-APDU Musig2GenerateNonce (OP_INIT): \(capdu.toHexString())")
+        var rapdu = try self.cardTransmit(plainApdu: capdu)
+        print("SATOCHIPLIB: R-APDU Musig2GenerateNonce (OP_INIT): \(rapdu.toHexString())")
+        
+        try rapdu.checkOK()
+        
+        // parse response
+        let pubnonce = rapdu.data
+        
+        // OP_FINALIZE: recover encrypted_secnonce
+        p2 = 0x03 // OP_FINALIZE
+        capdu = APDUCommand(cla: CLA.proprietary.rawValue,
+                           ins: SatocardINS.musig2GenerateNonce.rawValue,
+                           p1: p1,
+                           p2: p2,
+                           data: [])
+        
+        print("SATOCHIPLIB: C-APDU Musig2GenerateNonce (OP_FINALIZE): \(capdu.toHexString())")
+        rapdu = try self.cardTransmit(plainApdu: capdu)
+        print("SATOCHIPLIB: R-APDU Musig2GenerateNonce (OP_FINALIZE): \(rapdu.toHexString())")
+        
+        try rapdu.checkOK()
+        
+        // parse response
+        let encryptedSecnonce = rapdu.data
+        
+        // return pubnonce, secnonce
+        return (pubnonce, encryptedSecnonce)
+    }
+    
+    /**
+     * This function generates a MuSig2 signature for the specified private key stored in the Satochip.
+     * The specified private key comes either from a keyslot or derived from a BIP32 seed using cardBip32GetExtendedkey().
+     * The signature is computed based on secnonce and intermediate values b, ea, R_evenness and ggac.
+     * Signature is based on the BIP-0327 specification: https://github.com/bitcoin/bips/blob/master/bip-0327.mediawiki.
+     *
+     * The function returns the partial psig signature for corresponding key and given secnonce & session context.
+     *
+     * Card exception codes:
+     * - 9C06 SW_UNAUTHORIZED
+     * - 9C4A SW_FEATURE_DISABLED
+     * - 6700  SW_WRONG_LENGTH
+     * - 9C44 SW_BIP327_WRONG_SECNONCE
+     * - 9C47 SW_BIP327_INVALID_ID
+     * - 9C10 SW_INCORRECT_P1
+     * - 9C14 SW_BIP32_UNINITIALIZED_SEED
+     * - 9C09 SW_INCORRECT_ALG
+     * - 9C45 SW_BIP327_PUBKEY_MISMATCH
+     *
+     * - Parameter keynbr: the key to use (0xFF for bip32 extended key)
+     * - Parameter secnonce: the encrypted secnonce previously computed with cardMusig2GenerateNonce()
+     * - Parameter b: from BIP327 Session Context where b=int(hashMuSig/noncecoef(aggnonce || xbytes(Q) || m)) mod n
+     * - Parameter ea: the result of e multiplied by a in BIP327, where e=int(hashBIP0340/challenge(xbytes(R) || xbytes(Q) || m)) mod n and a=GetSessionKeyAggCoeff(session_ctx, P)
+     * - Parameter rHasEvenY: is True is has_even_y(R) for R as defined in BIP327, else False
+     * - Parameter ggaccIs1: is True if ggacc is equal to 1, else False where ggacc=g*gacc
+     * - Returns: psig, the partial signature as 32-byte array
+     * - Throws: SatocardError for parameter validation or if command APDU fails
+     *
+     * data (init): [encrypted secnonce(112b) | iv(16b) | mac(16b)]
+     * data (finalize): [b(32b) | e*a(32b) | has_even_y(R) (1b) | g*gacc (1b)]
+     */
+    private func cardMusig2Sign(keynbr: Int, secnonce: [UInt8], b: [UInt8], ea: [UInt8], rHasEvenY: Bool, ggaccIs1: Bool) throws -> [UInt8] {
+        
+        // check inputs
+        guard secnonce.count == 144 else {
+            throw SatocardError.wrongParameter(msg: "Wrong secnonce length (should be 144)")
+        }
+        guard b.count == 32 else {
+            throw SatocardError.wrongParameter(msg: "Wrong b length (should be 32)")
+        }
+        guard ea.count == 32 else {
+            throw SatocardError.wrongParameter(msg: "Wrong ea length (should be 32)")
+        }
+        
+        // OP_INIT: import secnonce
+        // data: [encrypted secnonce(112b) | iv(16b) | mac(16b)]
+        var data = secnonce
+        let ins = SatocardINS.musig2SignHash.rawValue
+        let p1 = UInt8(keynbr)
+        var p2: UInt8 = 0x01 // OP_INIT
+        
+        var capdu = APDUCommand(cla: CLA.proprietary.rawValue,
+                               ins: ins,
+                               p1: p1,
+                               p2: p2,
+                               data: data)
+        
+        print("SATOCHIPLIB: C-APDU cardMusig2SignHash (OP_INIT): \(capdu.toHexString())")
+        var rapdu = try self.cardTransmit(plainApdu: capdu)
+        print("SATOCHIPLIB: R-APDU cardMusig2SignHash (OP_INIT): \(rapdu.toHexString())")
+        
+        try rapdu.checkOK()
+        
+        // OP_FINALIZE: recover encrypted_secnonce
+        // data: [ b(32b)| ea(32b) | R_evenness(1b) | ggacc(1b) ]
+        data = b + ea
+        data += [rHasEvenY ? 0x00 : 0x01]
+        data += [ggaccIs1 ? 0x01 : 0x00]
+        
+        p2 = 0x03 // OP_FINALIZE
+        capdu = APDUCommand(cla: CLA.proprietary.rawValue,
+                           ins: ins,
+                           p1: p1,
+                           p2: p2,
+                           data: data)
+        
+        print("SATOCHIPLIB: C-APDU cardMusig2SignHash (OP_FINALIZE): \(capdu.toHexString())")
+        rapdu = try self.cardTransmit(plainApdu: capdu)
+        print("SATOCHIPLIB: R-APDU cardMusig2SignHash (OP_FINALIZE): \(rapdu.toHexString())")
+        
+        try rapdu.checkOK()
+        
+        // parse response
+        let psig = rapdu.data
+        
+        // return partial sig
+        return psig
+    }
     
     //****************************************
     //*               MARK: SATODIME
@@ -1177,7 +1538,7 @@ public class SatocardCommandSet {
         }
         
         let labelBytes: [UInt8] = label.bytes
-        let entropyBytes: [UInt8] = entropy.bytes
+        let entropyBytes: [UInt8] = entropy
         let saveEntropyByte = saveEntropy ? UInt8(0x01) : UInt8(0x00)
         let data: [UInt8] = [stype.rawValue, subtype, saveEntropyByte] +
                             [UInt8(labelBytes.count)] + labelBytes + [UInt8(entropyBytes.count)] + entropyBytes
@@ -1713,7 +2074,250 @@ public class SatocardCommandSet {
     }
     
     //****************************************
-    //*            PKI commands              *
+    //*            MARK: SATOCASH            *
+    //****************************************
+    
+    public func satocashGetStatus(sendEncrypted: Bool = true) throws -> APDUResponse {
+        //logger.info("in satocashGetStatus - info");
+        
+        let capdu: APDUCommand = APDUCommand(cla: CLA.proprietary.rawValue, ins: SatocardINS.satocashGetStatus.rawValue, p1: 0x00, p2: 0x00, data: [])
+        
+        //logger.info("SATOCHIPLIB: C-APDU cardGetStatus:  \(capdu.toHexString())");
+        let rapdu: APDUResponse
+        if sendEncrypted {
+            rapdu = try self.cardTransmit(plainApdu: capdu);
+        } else {
+            rapdu = try cardChannel.send(capdu)
+        }
+        //logger.info("SATOCHIPLIB: R-APDU cardGetStatus: \(rapdu.toHexString())");
+        
+        if rapdu.sw == StatusWord.ok.rawValue {
+            satocashStatus = SatocashStatus(rapdu: rapdu)
+        }
+        
+        return rapdu
+    }
+
+    public func satocashImportMint(mintUrl: String) throws -> (APDUResponse, UInt8) {
+        print("In satocashImportMint")
+        let cla = CLA.proprietary.rawValue
+        let ins = SatocardINS.satocashImportMint.rawValue
+        let p1 = UInt8(0x00)
+        let p2 = UInt8(0x00)
+        let data: [UInt8] = [UInt8(Array(mintUrl.utf8).count)] + Array(mintUrl.utf8)
+        
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
+        
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        try rapdu.checkOK()
+        
+        // parse response
+        let response = rapdu.data
+        let index: UInt8 = response[0]
+        
+        return (rapdu, index)
+    }
+
+    public func satocashExportMint(index: UInt8) throws -> (APDUResponse, String) {
+        print("In satocashExportMint")
+        let cla = CLA.proprietary.rawValue
+        let ins = SatocardINS.satocashExportMint.rawValue
+        let p1 = index
+        let p2 = UInt8(0x00)
+        
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: [])
+        
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        try rapdu.checkOK()
+        
+        // parse response
+        let data = rapdu.data
+        let url_size = data[0]
+        let url_bytes = data[1 ..< (Int(url_size)+1)]
+        let url = String(bytes: url_bytes, encoding: .utf8) ?? url_bytes.bytesToHex // todo throw if nil?
+        
+        return (rapdu, url)
+    }
+
+    public func satocashRemoveMint(index: UInt8) throws -> APDUResponse {
+        print("In satocashRemoveMint")
+        let cla = CLA.proprietary.rawValue
+        let ins = SatocardINS.satocashRemoveMint.rawValue
+        let p1 = index
+        let p2 = UInt8(0x00)
+        
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: [])
+        
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        try rapdu.checkOK()
+        
+        return rapdu
+    }
+
+    public func satocashImportKeyset(keysetIdBytes: [UInt8], mintIndex: UInt8, unit: UInt8) throws -> (APDUResponse, UInt8) {
+        print("In satocashImportKeyset")
+        let cla = CLA.proprietary.rawValue
+        let ins = SatocardINS.satocashImportKeyset.rawValue
+        let p1 = UInt8(0x00)
+        let p2 = UInt8(0x00)
+        let data = keysetIdBytes + [mintIndex] + [unit]
+        
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
+        
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        try rapdu.checkOK()
+        
+        // parse response
+        let response = rapdu.data
+        let index: UInt8 = response[0]
+        
+        return (rapdu, index)
+    }
+
+    public func satocashExportKeysets(indexes: [UInt8]) throws -> (APDUResponse, [UInt8:SatocashKeyset]) {
+        print("In satocashExportKeyset")
+        let cla = CLA.proprietary.rawValue
+        let ins = SatocardINS.satocashExportKeyset.rawValue
+        let p1 = UInt8(0x00)
+        let p2 = UInt8(0x00)
+        var data: [UInt8] = [UInt8(indexes.count)] + indexes
+        
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        try rapdu.checkOK()
+        
+        // parse response
+        let response = rapdu.data
+        if (response.count != (indexes.count)*11){
+            throw SatocashApiError.wrongExportKeysetsSize(length: response.count, expected: (indexes.count)*11)
+        }
+        
+        var keysetDic: [UInt8:SatocashKeyset] = [:]
+        for index in 0..<indexes.count {
+            let pos = 11*index
+            let keyset = SatocashKeyset(bytes: Array(response[pos..<(pos+11)]))
+            keysetDic[keyset.index] = keyset
+        }
+        
+        return (rapdu, keysetDic)
+    }
+
+    public func satocashRemoveKeyset(index: UInt8) throws -> APDUResponse {
+        print("In satocashRemoveKeyset")
+        let cla = CLA.proprietary.rawValue
+        let ins = SatocardINS.satocashRemoveKeyset.rawValue
+        let p1 = index
+        let p2 = UInt8(0x00)
+        
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: [])
+        
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        try rapdu.checkOK()
+        
+        return rapdu
+    }
+
+    public func satocashImportProof(keysetIndex: UInt8, amountExponent: UInt8, secretBytes: [UInt8], unblindedKeyBytes: [UInt8]) throws -> (APDUResponse, UInt16){
+        print("In satocashImportProof")
+        let cla = CLA.proprietary.rawValue
+        let ins = SatocardINS.satocashImportProof.rawValue
+        let p1 = UInt8(0x00)
+        let p2 = UInt8(0x00)
+        
+        // data: [keyset_index(1b) | amount_exponent(1b) | unblinded_key(33b) | secret(32b)]
+        let data = [keysetIndex, amountExponent] + unblindedKeyBytes + secretBytes
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
+        
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        try rapdu.checkOK()
+        
+        // parse response
+        let response = rapdu.data
+        let index: UInt16 = UInt16(response[0]<<8 + response[1])
+        
+        return (rapdu, index)
+    }
+
+    public func satocashExportProofs(indexes: [UInt16]) throws -> [UInt16:SatocashProof] {
+        print("In satocashExportProofs")
+        let cla = CLA.proprietary.rawValue
+        let ins = SatocardINS.satocashExportProofs.rawValue
+        let p1 = UInt8(0x00)
+        
+        // OP_INIT
+        var p2 = UInt8(0x01)
+        
+        // data (OP_INIT): [ proof_index_list_size(1b) | proof_index(2b) ... | 2FA_size(1b) | 2FA ]
+        var data: [UInt8] = [UInt8(indexes.count)]
+        for index in indexes{
+            data += [UInt8(index>>8), UInt8(index%256)]
+        }
+            
+        var proof_counter = 0
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
+        
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        try rapdu.checkOK()
+        // parse into proofs
+        var proofDic: [UInt16:SatocashProof] = [:]
+        var response = rapdu.data
+        var pos = 0
+        while (pos < response.count) {
+            let proofBytes = Array(response[pos..<(pos+70)])
+            if let proof = SatocashProof(bytes: proofBytes){
+                proofDic[proof.index] = proof
+            }
+            pos+=70
+            proof_counter+=1
+        }
+        
+        // OP_PROCESS
+        p2 = UInt8(0x02)
+        
+        while (true){
+            // check if all proofs have been recovered
+            if (proof_counter == indexes.count){
+                return proofDic
+            }
+              
+            let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: [])
+            let rapdu = try self.cardTransmit(plainApdu: capdu)
+            try rapdu.checkOK()
+            
+            pos = 0
+            response = rapdu.data
+            while (pos < response.count) {
+                let proofBytes = Array(response[pos..<(pos+70)])
+                if let proof = SatocashProof(bytes: proofBytes){
+                    proofDic[proof.index] = proof
+                }
+                pos+=70
+                proof_counter+=1
+            }
+            
+        }
+
+        return proofDic
+    }
+
+    public func satocashGetProofInfo(unit: UInt8, infoType: UInt8, indexStart: UInt16, indexSize: UInt16) throws -> APDUResponse {
+        print("In satocashGetProofInfo")
+        let cla = CLA.proprietary.rawValue
+        let ins = SatocardINS.satocashGetProofInfo.rawValue
+        let p1 = unit
+        let p2 = infoType
+        
+        let data = [UInt8(indexStart>>8), UInt8(indexStart%256)] + [UInt8(indexSize>>8), UInt8(indexSize%256)]
+        let capdu = APDUCommand(cla: cla, ins: ins, p1: p1, p2: p2, data: data)
+        
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        try rapdu.checkOK()
+        
+        return rapdu
+    }
+    
+    //****************************************
+    //*         MARK: PKI commands           *
     //****************************************
         
     public func cardExportPersoPubkey() throws -> APDUResponse {
@@ -1932,11 +2536,6 @@ public class SatocardCommandSet {
         // success!
         return (PkiReturnCode.success, dic)
     }
-    
-    //****************************************
-    //*               SEEDKEEPER             *
-    //****************************************
-    
     
 }
 

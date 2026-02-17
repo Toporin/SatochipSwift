@@ -20,8 +20,10 @@ public struct Version {
     // v0.10: sign tx hash
     // v0.11: support for (mandatory) secure channel
     // v0.12: card label & support for encrypted seed import from Seedkeeper
+    // v0.14: Schnorr signature support
+    // v0.15: Musig2 signature support
     public static let SATOCHIP_PROTOCOL_MAJOR_VERSION = 0
-    public static let SATOCHIP_PROTOCOL_MINOR_VERSION = 0
+    public static let SATOCHIP_PROTOCOL_MINOR_VERSION = 15
     public static let SATOCHIP_PROTOCOL_VERSION = (SATOCHIP_PROTOCOL_MAJOR_VERSION<<8)+SATOCHIP_PROTOCOL_MINOR_VERSION
 
     // Seedkeeper supported version tuple
@@ -33,15 +35,25 @@ public struct Version {
     // Satodime supported version tuple
     // v 0.1: initial version
     public static let SATODIME_PROTOCOL_MAJOR_VERSION = 0
-    public static let SATODIME_PROTOCOL_MINOR_VERSION = 1
+    public static let SATODIME_PROTOCOL_MINOR_VERSION = 2
     public static let SATODIME_PROTOCOL_VERSION = (SATODIME_PROTOCOL_MAJOR_VERSION<<8)+SATODIME_PROTOCOL_MINOR_VERSION
+
+    // Satocash supported version tuple
+    // v 0.1: initial version
+    public static let SATOCASH_PROTOCOL_MAJOR_VERSION = 0
+    public static let SATOCASH_PROTOCOL_MINOR_VERSION = 1
+    public static let SATOCASH_PROTOCOL_VERSION = (SATOCASH_PROTOCOL_MAJOR_VERSION<<8)+SATOCASH_PROTOCOL_MINOR_VERSION
 
     // SatochipSwift version
     // v0.1.0 initial version (satodime only)
     // v0.2.0 add Seedkeeper support
     // v0.2.1 fix secp256k1 version dependency 
+    // v0.2.2 fix SwiftTLS version dependency 
+    // v0.3.0 add Satocash support (WIP)
+    // v0.3.2 add ECDSA, Schnorr & Musig2 signatures support for Satochip
+    // v0.3.3 add support for Satodime v0.2 (CoA, dynamic NDEF)
     public static let SATOCHIPSWIFT_MAJOR_VERSION = 0
-    public static let SATOCHIPSWIFT_MINOR_VERSION = 2
-    public static let SATOCHIPSWIFT_REVISION = 2
+    public static let SATOCHIPSWIFT_MINOR_VERSION = 3
+    public static let SATOCHIPSWIFT_REVISION = 3
     public static let SATOCHIPSWIFT_VERSION = String(SATOCHIPSWIFT_MAJOR_VERSION) + "." + String(SATOCHIPSWIFT_MINOR_VERSION) + "." + String(SATOCHIPSWIFT_REVISION)
 }

@@ -17,6 +17,7 @@ let package = Package(
     dependencies: [
         // Dependencies declare other packages that this package depends on.
         // .package(url: /* package url */, from: "1.0.0"),
+        //.package(url: "https://github.com/status-im/secp256k1.swift.git", .branch("master")),
         .package(url: "https://github.com/Toporin/SwiftTLS.git", .upToNextMinor(from: "0.1.0")),
         .package(url: "https://github.com/GigaBitcoin/secp256k1.swift.git", .upToNextMinor(from: "0.10.0")),
         .package(url: "https://github.com/krzyzanowskim/CryptoSwift.git", .upToNextMinor(from:"1.0.0")),
@@ -32,11 +33,13 @@ let package = Package(
             name: "SatochipSwift",
             dependencies: [
                 "CryptoSwift",
+                //"CryptoSwiftWrapper",
                 "Zip",
                 "SwiftTLS",
                 "MnemonicSwift",
                 "BigInt",
                 .product(name: "secp256k1", package: "secp256k1.swift"),
+                //.product(name: "P256K", package: "swift-secp256k1"),
             ]),
         .testTarget(
             name: "SatochipSwiftTests",
