@@ -25,6 +25,14 @@ Add ECDSA, Schnorr & Musig2 signatures support for Satochip:
 
 Add Satocash support
 
+## [0.2.2]
+
+Fix SwiftTLS version dependency: use tagged version instead of branch reference, which is not recommended or may cause issues with tagged version in dependent projects.
+
+## [0.2.1]
+
+Fix secp256k1 version dependency 
+
 ## [0.2.0]
 
 Add Seedkeeper support

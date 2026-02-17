@@ -47,6 +47,8 @@ public struct Version {
     // SatochipSwift version
     // v0.1.0 initial version (satodime only)
     // v0.2.0 add Seedkeeper support
+    // v0.2.1 fix secp256k1 version dependency 
+    // v0.2.2 fix SwiftTLS version dependency 
     // v0.3.0 add Satocash support (WIP)
     // v0.3.2 add ECDSA, Schnorr & Musig2 signatures support for Satochip
     // v0.3.3 add support for Satodime v0.2 (CoA, dynamic NDEF)
