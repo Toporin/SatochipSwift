@@ -123,6 +123,7 @@ public class SatocardCommandSet {
     
     static let sensitiveInstructionSet: Set = [SatocardINS.setup.rawValue,
                                                SatocardINS.bip32ImportSeed.rawValue,
+                                               SatocardINS.bip32ResetSeed.rawValue,
                                                SatocardINS.changePin.rawValue,
                                                SatocardINS.verifyPin.rawValue,
                                                SatocardINS.unblockPin.rawValue,
@@ -802,6 +803,35 @@ public class SatocardCommandSet {
     //*               MARK: SATOCHIP
     //****************************************
     
+    @discardableResult
+    public func cardBip32ImportSeed(masterseed: [UInt8]) throws -> APDUResponse {
+        guard (16...64).contains(masterseed.count) else {
+            throw SatocardError.wrongParameter(msg: "Wrong seed length (should be 16-64)")
+        }
+        let capdu = APDUCommand(cla: CLA.proprietary.rawValue,
+                               ins: SatocardINS.bip32ImportSeed.rawValue,
+                               p1: UInt8(masterseed.count), p2: 0x00,
+                               data: masterseed)
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        return try rapdu.checkOK()
+    }
+
+    @discardableResult
+    public func cardResetSeed(pin: [UInt8], chalresponse: [UInt8]? = nil) throws -> APDUResponse {
+        guard (4...16).contains(pin.count) else {
+            throw SatocardError.wrongParameter(msg: "Wrong PIN length (should be 4-16)")
+        }
+        if let chalresponse = chalresponse, chalresponse.count != 20 {
+            throw SatocardError.wrongParameter(msg: "Wrong challenge-response length (should be 20)")
+        }
+        let capdu = APDUCommand(cla: CLA.proprietary.rawValue,
+                               ins: SatocardINS.bip32ResetSeed.rawValue,
+                               p1: UInt8(pin.count), p2: 0x00,
+                               data: pin + (chalresponse ?? []))
+        let rapdu = try self.cardTransmit(plainApdu: capdu)
+        return try rapdu.checkOK()
+    }
+
     /**
      * Signs a transaction hash using the specified key with optional 2FA.
      *
@@ -878,7 +908,7 @@ public class SatocardCommandSet {
      * - Returns: the tweaked public key as 65 bytes (uncompressed public key)
      * - Throws: SatocardError if tweak is not 32 bytes or if command APDU fails
      */
-    private func cardTaprootTweakPrivateKey(keynbr: Int, tweak: [UInt8], bypassFlag: Bool) throws -> [UInt8] {
+    public func cardTaprootTweakPrivateKey(keynbr: Int, tweak: [UInt8], bypassFlag: Bool) throws -> [UInt8] {
         
         guard tweak.count == 32 else {
             throw SatocardError.wrongParameter(msg: "Wrong tweak length (should be 32)")
@@ -991,7 +1021,7 @@ public class SatocardCommandSet {
      * - Returns: array containing [pubnonce, encrypted_sec_nonce]
      * - Throws: SatocardError for parameter validation or if command APDU fails
      */
-    private func cardMusig2GenerateNonce(keynbr: Int, aggpk: [UInt8], msg: [UInt8], extra: [UInt8]) throws -> ([UInt8], [UInt8]) {
+    public func cardMusig2GenerateNonce(keynbr: Int, aggpk: [UInt8], msg: [UInt8], extra: [UInt8]) throws -> ([UInt8], [UInt8]) {
         
         // check inputs
         guard aggpk.count == 32 else {
@@ -1086,7 +1116,7 @@ public class SatocardCommandSet {
      * data (init): [encrypted secnonce(112b) | iv(16b) | mac(16b)]
      * data (finalize): [b(32b) | e*a(32b) | has_even_y(R) (1b) | g*gacc (1b)]
      */
-    private func cardMusig2Sign(keynbr: Int, secnonce: [UInt8], b: [UInt8], ea: [UInt8], rHasEvenY: Bool, ggaccIs1: Bool) throws -> [UInt8] {
+    public func cardMusig2Sign(keynbr: Int, secnonce: [UInt8], b: [UInt8], ea: [UInt8], rHasEvenY: Bool, ggaccIs1: Bool) throws -> [UInt8] {
         
         // check inputs
         guard secnonce.count == 144 else {
