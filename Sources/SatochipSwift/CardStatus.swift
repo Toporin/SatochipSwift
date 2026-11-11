@@ -5,6 +5,8 @@ public struct CardStatus {
     public var isSeeded: Bool = false
     public var needsSecureChannel: Bool = false
     public var needs2FA: Bool = false
+    public private(set) var supportsTaproot: Bool = false
+    public private(set) var supportsTaprootMultisig: Bool = false
     public var protocolMajorVersion: UInt8 = 0
     public var protocolMinorVersion: UInt8 = 0
     public var appletMajorVersion: UInt8 = 0
@@ -50,6 +52,17 @@ public struct CardStatus {
             } else {
                 needsSecureChannel = false
             }
+
+            let version = (UInt32(data[0]) << 24) | (UInt32(data[1]) << 16)
+                | (UInt32(data[2]) << 8) | UInt32(data[3])
+            // Policies: Schnorr at 13 (since 0.14-0.5), MuSig2 at 16; 0 = enabled.
+            let schnorrEnabled = version < 0x000e0005
+                || (data.count >= 16 && data[13] == 0)
+            supportsTaproot = data.count >= 12 && version >= 0x000e0001
+                && schnorrEnabled
+            // Require 0.15-0.1's protection against encrypted nonce replay.
+            supportsTaprootMultisig = supportsTaproot && version >= 0x000f0001
+                && data.count >= 17 && data[16] == 0
         } else if rapdu.sw==0x9c04 {
             setupDone = false
             isSeeded = false
