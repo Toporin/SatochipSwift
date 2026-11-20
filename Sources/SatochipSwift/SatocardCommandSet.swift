@@ -903,20 +903,31 @@ public class SatocardCommandSet {
      * The function returns the public key corresponding to the private key.
      *
      * - Parameter keynbr: key number or 0xFF for the last derived Bip32 extended key
-     * - Parameter tweak: tweak data (32 bytes)
+     * - Parameter tweak: 32-byte Merkle root, or empty for BIP86 (no script tree).
+     *   A 32-byte all-zero root produces a different output key.
      * - Parameter bypassFlag: if set to true, the tweak is bypassed and the private key is used as is (for example for Nostr signatures)
      * - Returns: the tweaked public key as 65 bytes (uncompressed public key)
-     * - Throws: SatocardError if tweak is not 32 bytes or if command APDU fails
+     * - Throws: An error for an invalid tweak length, a failed card command, or tweaking on a protocol older than 0.16.
      */
     public func cardTaprootTweakPrivateKey(keynbr: Int, tweak: [UInt8], bypassFlag: Bool) throws -> [UInt8] {
         
-        guard tweak.count == 32 else {
-            throw SatocardError.wrongParameter(msg: "Wrong tweak length (should be 32)")
+        guard tweak.isEmpty || tweak.count == 32 else {
+            throw SatocardError.wrongParameter(msg: "Wrong tweak length (should be 0 or 32)")
         }
-        
-        // data: [tweak_size(1b) | tweak_data(32b)]
-        var data: [UInt8] = [32]
-        data += tweak
+        if !bypassFlag {
+            if cardStatus == nil {
+                try cardGetStatus().checkOK()
+            }
+            guard let status = cardStatus, status.protocolVersion != 0 else {
+                throw SatocardError.wrongParameter(msg: "Card protocol version unavailable")
+            }
+            guard status.protocolVersion >= 0x0010 else {
+                throw SatocardError.unsupportedFeature(msg: "Taproot tweaking requires Satochip applet protocol 0.16 or later")
+            }
+        }
+
+        // data: [tweak_size(1b) | tweak_data(0 or 32b)]
+        let data = [UInt8(tweak.count)] + tweak
         
         let p1 = UInt8(keynbr)
         let p2: UInt8 = bypassFlag ? 0x01 : 0x00
