@@ -31,7 +31,9 @@ public struct RecoverableSignature {
         var foundID: UInt8 = UInt8.max
         var foundPubkey: [UInt8] = []
         for i: UInt8 in 0...3 {
-            let pub = Crypto.shared.secp256k1RecoverPublic(r: r, s: s, recId: i, hash: hash)
+            guard let pub = Crypto.shared.secp256k1RecoverPublic(r: r, s: s, recId: i, hash: hash) else {
+                continue // this recovery id yields no point on the curve
+            }
             let pubCoordx = Array(pub[1 ... 32])
             //logger.info("Recovered coordx: \(pubCoordx.bytesToHex)")
             if (pubCoordx == coordx) {
@@ -70,7 +72,9 @@ public struct ListRecoverableSignature {
         
         var pubkeyList = [[UInt8]]()
         for i: UInt8 in 0...1 {
-            let pubkey = Crypto.shared.secp256k1RecoverPublic(r: r, s: s, recId: i, hash: hash)
+            guard let pubkey = Crypto.shared.secp256k1RecoverPublic(r: r, s: s, recId: i, hash: hash) else {
+                continue // this recovery id yields no point on the curve
+            }
             print("Recovered pubkey: \(pubkey.bytesToHex)")
             pubkeyList.append(pubkey)
         }

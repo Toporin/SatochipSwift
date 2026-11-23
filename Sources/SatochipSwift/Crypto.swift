@@ -228,12 +228,17 @@ class Crypto {
         return _secp256k1PubToBytes(&pubKey)
     }
 
-    func secp256k1RecoverPublic(r: [UInt8], s: [UInt8], recId: UInt8, hash: [UInt8]) -> [UInt8] {
+    /// Returns the uncompressed public key, or nil if the signature cannot be parsed or this recovery id yields no point on the curve.
+    func secp256k1RecoverPublic(r: [UInt8], s: [UInt8], recId: UInt8, hash: [UInt8]) -> [UInt8]? {
         var sig = secp256k1_ecdsa_recoverable_signature()
-        _ = secp256k1_ecdsa_recoverable_signature_parse_compact(secp256k1Ctx, &sig, r + s, Int32(recId))
+        guard secp256k1_ecdsa_recoverable_signature_parse_compact(secp256k1Ctx, &sig, r + s, Int32(recId)) == 1 else {
+            return nil
+        }
 
         var pubKey = secp256k1_pubkey()
-        _ = secp256k1_ecdsa_recover(secp256k1Ctx, &pubKey, &sig, hash)
+        guard secp256k1_ecdsa_recover(secp256k1Ctx, &pubKey, &sig, hash) == 1 else {
+            return nil
+        }
         return _secp256k1PubToBytes(&pubKey)
     }
 
