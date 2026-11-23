@@ -5,6 +5,8 @@ public struct CardStatus {
     public var isSeeded: Bool = false
     public var needsSecureChannel: Bool = false
     public var needs2FA: Bool = false
+    public private(set) var supportsTaproot: Bool = false
+    public private(set) var supportsTaprootMultisig: Bool = false
     public var protocolMajorVersion: UInt8 = 0
     public var protocolMinorVersion: UInt8 = 0
     public var appletMajorVersion: UInt8 = 0
@@ -25,7 +27,7 @@ public struct CardStatus {
             protocolMinorVersion = data[1]
             appletMajorVersion = data[2]
             appletMinorVersion = data[3]
-            protocolVersion = UInt16(protocolMajorVersion<<8) + UInt16(protocolMinorVersion)
+            protocolVersion = (UInt16(protocolMajorVersion) << 8) | UInt16(protocolMinorVersion)
                   
             if data.count >= 8 {
                 pin0RemainingTries = data[4]
@@ -49,8 +51,11 @@ public struct CardStatus {
                 needsSecureChannel = (data[11]==0x00 ? false : true)
             } else {
                 needsSecureChannel = false
-                needs2FA = false //default value
             }
+
+            // A zero policy byte enables Schnorr (13) or MuSig2 (16).
+            supportsTaproot = protocolVersion >= 0x0010 && data.count >= 16 && data[13] == 0
+            supportsTaprootMultisig = supportsTaproot && data.count >= 17 && data[16] == 0
         } else if rapdu.sw==0x9c04 {
             setupDone = false
             isSeeded = false
