@@ -10,12 +10,12 @@
       }
     },
     {
-      "identity" : "cryptoswiftwrapper",
+      "identity" : "cryptoswift",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/anquii/CryptoSwiftWrapper.git",
+      "location" : "https://github.com/krzyzanowskim/CryptoSwift.git",
       "state" : {
-        "revision" : "0d57e806de368b5d2364fabb7c789b48661ec90c",
-        "version" : "1.4.3"
+        "revision" : "3a2acbb32ab68215ee1596ee6004da8e90c3721b",
+        "version" : "1.0.0"
       }
     },
     {
@@ -50,8 +50,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Toporin/SwiftTLS.git",
       "state" : {
-        "branch" : "master",
-        "revision" : "b5e05a7afc8088467ff4e819f3d103a96461fe14"
+        "revision" : "b5e05a7afc8088467ff4e819f3d103a96461fe14",
+        "version" : "0.1.0"
       }
     },
     {

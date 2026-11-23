@@ -22,8 +22,9 @@ public struct Version {
     // v0.12: card label & support for encrypted seed import from Seedkeeper
     // v0.14: Schnorr signature support
     // v0.15: Musig2 signature support
+    // v0.16: Taproot tweak with BIP86 (empty) tweak, length-prefixed PIN unblock with optional new PIN, factory reset v3
     public static let SATOCHIP_PROTOCOL_MAJOR_VERSION = 0
-    public static let SATOCHIP_PROTOCOL_MINOR_VERSION = 15
+    public static let SATOCHIP_PROTOCOL_MINOR_VERSION = 16
     public static let SATOCHIP_PROTOCOL_VERSION = (SATOCHIP_PROTOCOL_MAJOR_VERSION<<8)+SATOCHIP_PROTOCOL_MINOR_VERSION
 
     // Seedkeeper supported version tuple
@@ -52,8 +53,9 @@ public struct Version {
     // v0.3.0 add Satocash support (WIP)
     // v0.3.2 add ECDSA, Schnorr & Musig2 signatures support for Satochip
     // v0.3.3 add support for Satodime v0.2 (CoA, dynamic NDEF)
+    // v0.3.4 Satochip v0.16 PIN unblock & factory reset v3, Taproot/MuSig2 API, DER signature parsing fix
     public static let SATOCHIPSWIFT_MAJOR_VERSION = 0
     public static let SATOCHIPSWIFT_MINOR_VERSION = 3
-    public static let SATOCHIPSWIFT_REVISION = 3
+    public static let SATOCHIPSWIFT_REVISION = 4
     public static let SATOCHIPSWIFT_VERSION = String(SATOCHIPSWIFT_MAJOR_VERSION) + "." + String(SATOCHIPSWIFT_MINOR_VERSION) + "." + String(SATOCHIPSWIFT_REVISION)
 }

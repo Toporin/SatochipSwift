@@ -5,7 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased]
+## [0.3.4]
+
+Satochip v0.16 support:
+* Bump the supported Satochip protocol version (`Version.SATOCHIP_PROTOCOL_MINOR_VERSION`) from 0.15 to 0.16.
+* Make `cardTaprootTweakPrivateKey()`, `cardMusig2GenerateNonce()` and `cardMusig2Sign()` public.
+* `cardTaprootTweakPrivateKey()` accepts an empty tweak (BIP86, no script tree) as well as a 32-byte Merkle root, and throws `unsupportedFeature` when tweaking on an applet older than protocol 0.16.
+* Add `CardStatus.supportsTaproot` and `supportsTaprootMultisig`, read from the card policy bytes on protocol 0.16+.
+* Add `cardBip32ImportSeed(masterseed:)`, which checks the seed length (16-64 bytes), and `cardResetSeed(pin:chalresponse:)`, which checks the PIN (4-16 bytes) and challenge-response (20 bytes) lengths.
+* Fix `CardStatus.needs2FA` being reset to false on cards whose status reports 2FA but has no secure-channel byte (older applets).
 
 Port from Satochip-Java (0.2.6, 0.3.5):
 * Fix `cardUnblockPIN(puk:)` for Satochip v0.16, which expects the payload `[PUK_size(1b) | PUK | (optional) PIN_size(1b) | PIN]`. The format is selected from the card type and protocol version: earlier Satochip versions, Seedkeeper and Satodime keep the bare-PUK payload.
