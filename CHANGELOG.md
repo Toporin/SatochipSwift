@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+Port from Satochip-Java (0.2.6, 0.3.5):
+* Fix `cardUnblockPIN(puk:)` for Satochip v0.16, which expects the payload `[PUK_size(1b) | PUK | (optional) PIN_size(1b) | PIN]`. The format is selected from the card type and protocol version: earlier Satochip versions, Seedkeeper and Satodime keep the bare-PUK payload.
+* Add an optional `newPin` parameter to `cardUnblockPIN(puk:newPin:)` to replace the PIN while unblocking (Satochip v0.16+ only, throws otherwise).
+* Add `cardResetFactoryV3()`: single-command factory reset of Satochip v0.16+ (ins 0xFD, p1 0xAA, p2 0x55), sent through the secure channel, requiring neither PIN nor blocked PUK. The legacy `cardSendResetCommand()` is unchanged.
+
 ## [0.3.3]
 
 Support for Satodime v0.2+:

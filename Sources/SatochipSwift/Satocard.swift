@@ -13,6 +13,8 @@ public enum SatocardINS: UInt8 {
     case setup = 0x2A
     //resetToFactorySettings
     case resetToFactory = 0xFf
+    // single-command factory reset (Satochip v0.16+), sent with magic P1/P2
+    case resetToFactoryV3 = 0xFD
     // External authentication
     case verifyPin = 0x42
     case changePin = 0x44

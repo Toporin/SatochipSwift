@@ -408,7 +408,79 @@ public class SatocardCommandSet {
         //let rapdu = try self.cardTransmit(plainApdu: capdu)
         let rapdu = try self.cardChannel.send(capdu)
         print("in cardSendResetCommand END")
-        
+
+        return rapdu
+    }
+
+    /// Protocol version (encoded as `CardStatus.protocolVersion`) from which Satochip supports factory reset v3: 0x0010 is v0.16.
+    static let protocolVersionFactoryResetV3: UInt16 = 0x0010
+    static let factoryResetV3P1Magic: UInt8 = 0xAA
+    static let factoryResetV3P2Magic: UInt8 = 0x55
+
+    /**
+     * Resets a Satochip v0.16 or higher to its factory state (factory reset v3).
+     *
+     * Factory reset v3 is a single command (ins 0xFD, p1 0xAA, p2 0x55) sent through the secure channel.
+     * It requires neither the PIN nor a blocked PUK, so it also works on a card whose PIN is forgotten.
+     * It erases the seed, the imported keys, the 2FA, the PIN and the PUK, and resets the card label and policies.
+     * The authentikey and the personalization certificate are kept, so the card can still prove its authenticity.
+     *
+     * WARNING: irreversible, all user data on the card is permanently destroyed.
+     *
+     * The card is checked first, and nothing is sent if it is not set up, not a Satochip, or older than v0.16.
+     * On success, the secure channel, the cached status and the cached PIN are cleared.
+     * For older Satochip and for Seedkeeper, use `cardSendResetCommand()`.
+     *
+     * - Returns: the APDU response from the reset command
+     * - Throws: `CardError.setupNotDone` if the card is not set up,
+     *   `SatocardError.unsupportedFeature` if the card is not a Satochip v0.16 or higher,
+     *   a `StatusWord` if the card refuses the reset.
+     */
+    public func cardResetFactoryV3() throws -> APDUResponse {
+        print("SATOCHIPLIB: cardResetFactoryV3")
+
+        let statusRapdu = try cardGetStatus()
+        if statusRapdu.sw == StatusWord.setupNotDone.rawValue {
+            // nothing to reset, and the applet refuses the command before setup
+            throw CardError.setupNotDone
+        }
+        try statusRapdu.checkOK()
+        guard let status = cardStatus else {
+            throw SatocardError.wrongParameter(msg: "Card status unavailable")
+        }
+        if !status.setupDone {
+            throw CardError.setupNotDone
+        }
+        guard cardType == .satochip else {
+            throw SatocardError.unsupportedFeature(msg: "Factory reset v3 is not supported by \(cardType.rawValue)")
+        }
+        guard status.protocolVersion >= SatocardCommandSet.protocolVersionFactoryResetV3 else {
+            throw SatocardError.unsupportedFeature(msg: "Factory reset v3 requires a Satochip applet v0.16 or higher, found v\(status.protocolMajorVersion).\(status.protocolMinorVersion)")
+        }
+
+        let capdu = APDUCommand(cla: CLA.proprietary.rawValue,
+                                ins: SatocardINS.resetToFactoryV3.rawValue,
+                                p1: SatocardCommandSet.factoryResetV3P1Magic,
+                                p2: SatocardCommandSet.factoryResetV3P2Magic,
+                                data: [])
+        let rapdu = try cardTransmit(plainApdu: capdu)
+        print("SATOCHIPLIB: R-APDU cardResetFactoryV3: \(rapdu.toHexString())")
+
+        switch rapdu.sw {
+        case StatusWord.ok.rawValue:
+            print("SATOCHIPLIB: CARD HAS BEEN RESET TO FACTORY!")
+            // the card closed its secure channel and is back to its fresh-install state,
+            // without PIN: the cached PIN and status are stale
+            secureChannel.reset()
+            cardStatus = nil
+            pin0 = nil
+        case StatusWord.setupNotDone.rawValue:
+            throw CardError.setupNotDone
+        case StatusWord.commandUnsupported.rawValue:
+            throw SatocardError.unsupportedFeature(msg: "Factory reset v3 is not supported by this card")
+        default:
+            try rapdu.checkOK()
+        }
         return rapdu
     }
     
@@ -469,18 +541,76 @@ public class SatocardCommandSet {
         return rapdu
     }
     
-    public func cardUnblockPIN(puk: [UInt8]) throws -> APDUResponse {
-        
-        let capdu: APDUCommand = APDUCommand(cla: CLA.proprietary.rawValue, ins: SatocardINS.unblockPin.rawValue, p1: 0x00, p2: 0x00, data: puk)
+    /// Protocol version (encoded as `CardStatus.protocolVersion`) from which Satochip expects a length-prefixed UNBLOCK PIN payload: 0x0010 is v0.16.
+    static let protocolVersionSizePrefixedUnblock: UInt16 = 0x0010
+
+    /**
+     * Unblocks a blocked PIN using the PUK and, optionally, replaces the PIN.
+     *
+     * The payload depends on the applet: Satochip v0.16 introduced a length-prefixed payload
+     * `[PUK_size(1b) | PUK | (optional) PIN_size(1b) | PIN]`, while earlier Satochip versions,
+     * Seedkeeper and Satodime expect the bare PUK. The two are incompatible, so the format is selected
+     * from the card type and the protocol version reported by GET STATUS.
+     *
+     * - Parameter puk: the PIN Unblock Key
+     * - Parameter newPin: the PIN to set once unblocked, or nil to keep the previous PIN.
+     *   Only supported on Satochip applet v0.16 and later.
+     * - Returns: the APDU response from the unblock command
+     * - Throws: `SatocardError.wrongParameter` if the PUK or new PIN length is invalid,
+     *   `SatocardError.unsupportedFeature` if a new PIN is requested on an applet that cannot set it,
+     *   `CardError.wrongPIN` / `.wrongPINLegacy` / `.pinBlocked` if the PUK is wrong or blocked.
+     */
+    public func cardUnblockPIN(puk: [UInt8], newPin: [UInt8]? = nil) throws -> APDUResponse {
+
+        guard !puk.isEmpty, puk.count <= 255 else {
+            throw SatocardError.wrongParameter(msg: "Invalid PUK length: \(puk.count)")
+        }
+
+        let sizePrefixed = try usesSizePrefixedUnblockFormat()
+        let data: [UInt8]
+        if sizePrefixed {
+            // v0.16: [PUK_size(1b) | PUK | (optional) PIN_size(1b) | PIN]
+            var payload = [UInt8(puk.count)] + puk
+            if let newPin = newPin {
+                guard !newPin.isEmpty, newPin.count <= 255 else {
+                    throw SatocardError.wrongParameter(msg: "Invalid new PIN length: \(newPin.count)")
+                }
+                payload += [UInt8(newPin.count)] + newPin
+            }
+            data = payload
+        } else {
+            guard newPin == nil else {
+                throw SatocardError.unsupportedFeature(msg: "Setting a new PIN while unblocking requires a Satochip running applet v0.16 or later")
+            }
+            // legacy: the bare PUK, no length prefix
+            data = puk
+        }
+
+        let capdu: APDUCommand = APDUCommand(cla: CLA.proprietary.rawValue, ins: SatocardINS.unblockPin.rawValue, p1: 0x00, p2: 0x00, data: data)
         //logger.info("SATOCHIPLIB: CAPDU cardUnblockPIN: \(capdu.toHexString())")
         let rapdu: APDUResponse = try self.cardTransmit(plainApdu: capdu)
         //logger.info("SATOCHIPLIB: RAPDU cardUnblockPIN: \(rapdu.toHexString())")
         
         try rapdu.checkAuthOK()
-        
+
         return rapdu
     }
-    
+
+    /// Whether the card expects the v0.16 length-prefixed UNBLOCK PIN payload.
+    /// Only the Satochip applet changed format: Seedkeeper and Satodime keep the bare PUK whatever their version.
+    private func usesSizePrefixedUnblockFormat() throws -> Bool {
+        guard cardType == .satochip else {
+            return false
+        }
+        if cardStatus == nil {
+            _ = try cardGetStatus()
+        }
+        guard let status = cardStatus else {
+            return false
+        }
+        return status.protocolVersion >= SatocardCommandSet.protocolVersionSizePrefixedUnblock
+    }
+
     //****************************************
     //*           MARK: PKI                  *
     //****************************************
