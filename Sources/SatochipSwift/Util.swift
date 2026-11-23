@@ -135,64 +135,49 @@ class Util {
     }
     
     func parseToCompactSignature(sigIn: [UInt8]) throws -> ([UInt8], [UInt8], [UInt8]){
-        //let sigInSize = sigIn.count
-        
-        var offset=0
+        // sig is DER format: 30 <len> 02 <lr> <r> 02 <ls> <s>
+        guard sigIn.count >= 2 else {
+            throw UtilError.wrongSignatureLength(expected: 8, received: UInt8(sigIn.count))
+        }
+        var offset = 0
         if (sigIn[offset] != 0x30){
             throw UtilError.wrongSignatureFormat(expected: 0x30, received: sigIn[offset])
         }
-        offset+=1
+        offset += 2 // skip sequence tag and length, not needed
         
-        //let lt = sigIn[offset]
-        offset+=1
-        var check = sigIn[offset]
-        if (check != 0x02){
-            throw UtilError.wrongSignatureFormat(expected: 0x02, received: sigIn[offset])
+        let (r, offsetAfterR) = try readDerInteger(sig: sigIn, offset: offset)
+        let (s, _) = try readDerInteger(sig: sigIn, offset: offsetAfterR)
+        
+        return (r, s, r + s)
+    }
+    
+    /// Reads one DER INTEGER starting at its 0x02 tag, and returns it right-aligned in 32 bytes with the offset just past it.
+    ///
+    /// DER integers are signed and minimally encoded: a 256-bit value may take 33 bytes (a leading 0x00 keeps it positive)
+    /// or fewer than 32 (leading zero bytes are not emitted). The latter happens for about one signature component in 256.
+    private func readDerInteger(sig: [UInt8], offset start: Int) throws -> ([UInt8], Int) {
+        var offset = start
+        guard offset + 2 <= sig.count else {
+            throw UtilError.wrongSignatureLength(expected: 2, received: UInt8(clamping: max(sig.count - offset, 0)))
         }
-        offset+=1
-        
-        let lr = sigIn[offset] // should be 0x20 or 0x21 if first r msb is 1
-        offset+=1
-        let r: ArraySlice<UInt8>
-        if (lr == 0x20){
-            r = sigIn[offset ..< (offset+32)]
-            offset+=32
-        }else if (lr == 0x21){
-            offset+=1 // skip zero byte
-            r = sigIn[offset ..< (offset+32)]
-            offset+=32
+        let tag = sig[offset]
+        if (tag != 0x02){
+            throw UtilError.wrongSignatureCheckbyte(expected: 0x02, received: tag)
         }
-        else{
-            throw UtilError.wrongSignatureLength(expected: 0x20, received: lr)
+        var len = Int(sig[offset + 1])
+        offset += 2
+        guard offset + len <= sig.count else {
+            throw UtilError.wrongSignatureLength(expected: UInt8(clamping: len), received: UInt8(clamping: sig.count - offset))
         }
-        
-        check = sigIn[offset]
-        offset+=1
-        if (check != 0x02){
-            throw UtilError.wrongSignatureCheckbyte(expected: 0x02, received: check)
-            
+        if len > 0 && sig[offset] == 0x00 { // strip the sign byte, if present
+            offset += 1
+            len -= 1
         }
-        
-        let ls = sigIn[offset] // should be 0x20 or 0x21 if first s msb is 1
-        offset+=1
-        let s: ArraySlice<UInt8>
-        if (ls == 0x20){
-            s = sigIn[offset ..< (offset+32)]
-            offset+=32
-        } else if (ls == 0x21){
-            offset+=1 // skip zero byte
-            s = sigIn[offset ..< (offset+32)]
-            offset+=32
-        } else{
-            throw UtilError.wrongSignatureLength(expected: 0x20, received: ls)
+        guard len <= 32 else {
+            throw UtilError.wrongSignatureLength(expected: 0x20, received: UInt8(clamping: len))
         }
-        
-        //let sigOutSize = 64
-        let sigOut: ArraySlice<UInt8>
-        sigOut = r + s
-        
-        //return sigOut;
-        return (Array(r), Array(s), Array(sigOut))
+        let value = [UInt8](repeating: 0, count: 32 - len) + sig[offset ..< offset + len] // right-align, zero-pad
+        return (value, offset + len)
     }
     
 }
